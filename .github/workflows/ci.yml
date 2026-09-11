@@ -42,5 +42,5 @@ jobs:
           docker compose up --build -d --wait --wait-timeout 120
           curl --fail http://localhost:8000/healthz
           docker compose exec -T worker python -m agent4good.healthcheck
-      - if: always()
+      - if: always() && hashFiles('.env') != ''
         run: docker compose down -v
