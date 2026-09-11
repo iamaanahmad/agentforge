@@ -1,0 +1,7 @@
+{$A4G_PUBLIC_ORIGIN} {
+    encode zstd gzip
+    request_body {
+        max_size 128KB
+    }
+    reverse_proxy web:8000
+}

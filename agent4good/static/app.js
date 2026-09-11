@@ -1,0 +1,119 @@
+'use strict';
+const $ = s => document.querySelector(s);
+const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const names = {overview:'Overview',tasks:'Tasks',agents:'Your agents',approvals:'Decisions',memory:'Memory',schedules:'Schedules',integrations:'Connections',activity:'Activity',settings:'Settings'};
+const glyphs = ['◈','☷','◉','◇','▤','◷','⌘','↗','⚙'];
+let csrf = '', agents = [], current = 'overview', filter = 'all', toastTimer, detailId = null, rendering = false;
+const pretty = s => String(s).replaceAll('_',' ');
+const time = s => s ? new Date(s).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : 'Not yet';
+const badge = s => `<span class="badge ${escapeHTML(s)}">${escapeHTML(pretty(s))}</span>`;
+const agentName = id => agents.find(a => a.id === id)?.name || pretty(id);
+function toast(message) { $('#toast').textContent = message; $('#toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('#toast').hidden = true; }, 6000); }
+async function api(path, options = {}) {
+  const response = await fetch('/api/' + path, {credentials:'same-origin', ...options, headers:{...(options.body ? {'Content-Type':'application/json'} : {}), ...(options.method && options.method !== 'GET' ? {'X-CSRF-Token':csrf} : {}),...options.headers}});
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401 && path !== 'login') { showLogin(); throw new Error('Your session ended. Sign in again.'); }
+  if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Check the form values and try again.');
+  return data;
+}
+const mutate = (path, body = {}, method = 'POST') => api(path, {method,body:JSON.stringify(body)});
+function showLogin() { csrf = ''; $('#workspace').hidden = true; $('#login').hidden = false; $('#modal').close(); }
+function heading(kicker, title, subtitle, action = '') { return `<div class="page-heading"><div><p class="eyebrow">${kicker}</p><h1>${title}</h1><p>${subtitle}</p></div>${action}</div>`; }
+function empty(title, text, action = '') { return `<div class="empty"><span class="empty-symbol" aria-hidden="true">◇</span><h3>${title}</h3><p>${text}</p>${action}</div>`; }
+function events(rows) { return rows.length ? rows.map(r => `<div class="event-row"><span class="event-dot"></span><div class="event-content"><strong>${escapeHTML(pretty(r.kind))}</strong><p>${escapeHTML(r.message)}</p></div><time>${time(r.created_at)}</time></div>`).join('') : empty('A fresh start.','Your operator’s work will leave a clear trail here.'); }
+function taskRows(rows) { return rows.length ? `<div class="table-wrap"><table class="task-table"><thead><tr><th>Task</th><th>Agent</th><th>Status</th><th class="hide-mobile">Created</th></tr></thead><tbody>${rows.map(t => `<tr><td><button class="text-link" data-task="${t.id}">${escapeHTML(t.title)}</button></td><td>${escapeHTML(agentName(t.agent))}</td><td>${badge(t.status)}</td><td class="hide-mobile">${time(t.created_at)}</td></tr>`).join('')}</tbody></table></div>` : empty('Give your first task a home.','Describe an outcome. Choose an agent. Keep track of what happens.', '<button class="secondary" data-action="new-task">Create a task</button>'); }
+function approvalCard(a) { return `<article class="approval-card"><div class="row-heading"><h3>${escapeHTML(pretty(a.tool))}</h3>${badge(a.status)}</div><p class="approval-meta">Exact action for your review · ${time(a.created_at)}</p><dl class="approval-args">${Object.entries(a.arguments).map(([k,v]) => `<dt>${escapeHTML(pretty(k))}</dt><dd><pre>${escapeHTML(v)}</pre></dd>`).join('')}</dl>${a.status === 'pending' ? `<p class="small muted">Approval resumes this task and permits these exact values. External actions may not be reversible.</p><div class="actions"><button class="primary" data-decision="${a.id}" data-value="approve">Approve this action</button><button class="danger" data-decision="${a.id}" data-value="reject">Reject and stop</button></div>` : ''}</article>`; }
+function modal(title, body) { $('#modal-content').innerHTML = `<div class="modal-heading"><h2>${title}</h2><button class="icon-button" data-action="close" aria-label="Close dialog">×</button></div>${body}`; if (!$('#modal').open) $('#modal').showModal(); }
+function agentOptions(selected = 'strategist') { return agents.map(a => `<option value="${a.id}" ${a.id === selected ? 'selected' : ''}>${escapeHTML(a.name)}</option>`).join(''); }
+async function render() {
+  if (!csrf || rendering) return;
+  rendering = true;
+  const route = names[location.hash.slice(1)] ? location.hash.slice(1) : 'overview';
+  current = route;
+  try {
+    const overview = await api('overview');
+    $('#workspace-name').textContent = overview.project.name;
+    $('#worker-dot').classList.toggle('online', overview.worker.online);
+    $('#worker-label').textContent = overview.worker.online ? 'Operator online' : 'Operator offline';
+    $('#breadcrumb').textContent = names[route];
+    $('#navigation').innerHTML = Object.entries(names).map(([key,name],i) => `<a href="#${key}" class="${route === key ? 'active' : ''}" ${route === key ? 'aria-current="page"' : ''}><span aria-hidden="true">${glyphs[i]}</span>${name}${key === 'approvals' && overview.counts.approvals ? `<span class="nav-count">${overview.counts.approvals}</span>` : ''}</a>`).join('');
+    let html = '';
+    if (route === 'overview') {
+      const tasks = await api('tasks');
+      html = heading('YOUR OPERATOR WORKSPACE','Good work starts here.','A clear view of your goals, your team, and the next move.') + `<section class="hero-workbench"><div class="hero-copy"><span class="tiny-label">FROM INTENT TO ACTION</span><h2>Big goals.<br>Thoughtful next steps.</h2><p>${escapeHTML(overview.project.goal || 'Give your operator an outcome. It researches, prepares the work, and brings important decisions back to you.')}</p><button class="primary" data-action="new-task">Create a task <span>↗</span></button></div><div class="hero-illustration" aria-hidden="true"><div class="illustration-grid"></div><div class="illustration-note note-back">A clear direction</div><div class="illustration-note note-front"><span class="mini-dot"></span>One good next move<span class="note-lines"></span><span class="note-lines short"></span><span class="note-check">✓</span></div><div class="illustration-spark">✳</div></div></section><section class="stats" aria-label="Workspace totals">${[['Total tasks',overview.counts.tasks,'All work in one place'],['In progress',overview.counts.running,'Your operator at work'],['Your decisions',overview.counts.approvals,'Actions waiting for you'],['Completed',overview.counts.completed,'Results ready to read']].map(([name,n,note]) => `<div class="stat"><span>${name}</span><strong class="stat-number">${n}</strong><span class="stat-note">${note}</span></div>`).join('')}</section><div class="two-col"><section class="panel"><div class="panel-head"><h2>Recent work</h2><a href="#tasks">View all ↗</a></div>${taskRows(tasks.slice(0,4))}</section><section class="panel"><div class="panel-head"><h2>Ready when you are</h2><a href="#integrations">Setup ↗</a></div><div class="panel-body">${[[true,'Workspace saved','Your tasks and memory stay here.'],[overview.provider.configured,'Connect your model',overview.provider.configured ? 'A model key is configured.' : 'Add an OpenAI key on your server.'],[overview.worker.online,'Start your operator',overview.worker.online ? 'The worker is checking for tasks.' : 'Start the worker to process tasks.']].map(([ok,title,text]) => `<div class="readiness"><span class="check-circle ${ok?'checked':''}">${ok?'✓':'·'}</span><div><strong>${title}</strong><p>${text}</p></div></div>`).join('')}<p class="small muted">Mode: ${escapeHTML(overview.project.autonomy)}. External changes always need your approval.</p></div></section></div><section class="agent-strip"><div class="panel-head"><h2>Nine perspectives. One workspace.</h2><a href="#agents">Meet your agents ↗</a></div><div class="agent-preview">${agents.slice(0,4).map((a,i) => `<a href="#agents"><span class="role-icon">${['↗','⌘','◈','◎'][i]}</span><strong>${escapeHTML(a.name)}</strong><span>${escapeHTML(a.skills[0])}</span></a>`).join('')}</div></section>`;
+    } else if (route === 'tasks') {
+      const rows = await api('tasks');
+      html = heading('THE WORK','From a goal to a result.','Tasks keep the instructions, decisions, and proof together.','<button class="primary" data-action="new-task">Create a task ↗</button>') + `<div class="filter-row">${['all','draft','queued','running','waiting_approval','done','failed','cancelled'].map(s => `<button class="filter ${s===filter?'selected':''}" data-filter="${s}">${escapeHTML(pretty(s))}</button>`).join('')}</div><section class="panel">${taskRows(rows.filter(t => filter === 'all' || t.status === filter))}</section>`;
+    } else if (route === 'agents') {
+      html = heading('YOUR AI TEAM','A specialist for the next step.','Choose a perspective. Each agent uses the same tools, memory, and approval rules.') + `<div class="agent-grid">${agents.map((a,i) => `<article class="agent-card"><div class="role-icon">${glyphs[i]}</div><h2>${escapeHTML(a.name)}</h2><p>${escapeHTML(a.description)}</p><div class="tags">${a.skills.map(s => `<span class="tag">${escapeHTML(s)}</span>`).join('')}</div><button class="text-link" data-agent="${a.id}">Give this agent a task ↗</button></article>`).join('')}</div><p class="small muted">Roles guide the model. They do not create access to unconnected services or run separate models in parallel.</p>`;
+    } else if (route === 'approvals') {
+      const rows = await api('approvals');
+      html = heading('YOU HAVE THE FINAL SAY','Decisions, with the details.','Review the exact action before your operator changes anything outside this workspace.') + `<div class="stack">${rows.length ? rows.map(approvalCard).join('') : empty('Nothing waiting on you.','Actions that need your approval will appear here.')}</div>`;
+    } else if (route === 'memory') {
+      const rows = await api('memory');
+      html = heading('SHARED CONTEXT','Keep the useful things close.','Save product facts, goals, and preferences your agents can read. Never store passwords or API keys.','<button class="primary" data-action="new-note">Add a note ↗</button>') + `<section class="panel">${rows.length ? rows.map(r => `<article class="note-row"><div class="row-heading"><h2>${escapeHTML(r.key)}</h2><button class="text-link" data-note="${escapeHTML(r.key)}">Edit ↗</button></div><p class="result-text">${escapeHTML(r.content)}</p><span class="small muted">Updated ${time(r.updated_at)}</span></article>`).join('') : empty('Start with what matters.','A product description or a clear goal gives your operator better context.')}</section>`;
+    } else if (route === 'schedules') {
+      const rows = await api('schedules');
+      html = heading('A STEADY RHYTHM','Make useful work repeat.','Schedules create tasks. Autonomous mode starts them; other modes save drafts.','<button class="primary" data-action="new-schedule">Add a schedule ↗</button>') + `<section class="panel">${rows.length ? rows.map(s => `<article class="schedule-row"><div class="row-heading"><h2>${escapeHTML(s.name)}</h2>${badge(s.enabled?'active':'paused')}</div><p>${escapeHTML(s.prompt)}</p><div class="schedule-detail"><span>${escapeHTML(agentName(s.agent))} · Every ${s.interval_minutes} minutes · Next ${time(s.next_run_at)}</span><button class="secondary" data-schedule="${s.id}" data-enabled="${!s.enabled}">${s.enabled?'Pause':'Resume'}</button></div></article>`).join('') : empty('Find your rhythm.','Repeat a research brief, issue review, or planning task on your schedule.')}</section>`;
+    } else if (route === 'integrations') {
+      const rows = await api('integrations');
+      html = heading('CONNECTED CAPABILITIES','Good tools. Clear boundaries.','Credentials stay on your server. This page shows configuration, not a live connection test.') + `<section class="panel integration-list">${rows.map(r => `<article class="integration"><span class="role-icon">${escapeHTML(r.name.slice(0,1))}</span><div><h2>${escapeHTML(r.name)}</h2><p>${escapeHTML(r.description)}</p></div>${badge(r.configured?'configured':'not_configured')}</article>`).join('')}</section><div class="notice"><h3>Know what this version can do</h3><p>Research, draft, manage memory, send approved emails, and propose GitHub changes. Browser automation, code execution, analytics providers, ad activation, and production deploys are not connected tools in this version.</p><p>Configure services in your server’s environment. Restart the web service and worker after changes.</p></div>`;
+    } else if (route === 'activity') {
+      html = heading('THE RECORD','See what happened.','Task events show model steps, tool calls, decisions, and failures.') + `<section class="panel panel-body">${events(await api('events'))}</section>`;
+    } else if (route === 'settings') {
+      const p = overview.project;
+      html = heading('WORKSPACE SETTINGS','Set the direction.','A clear goal and clear boundaries help your operator make useful progress.') + `<form id="settings-form" class="panel form-panel"><div class="field"><label for="project-name">Workspace name</label><input id="project-name" name="name" required maxlength="80" value="${escapeHTML(p.name)}"></div><div class="field"><label for="project-goal">Your goal</label><textarea id="project-goal" name="goal" rows="4" maxlength="4000" placeholder="Who do you help, and what result do you want?">${escapeHTML(p.goal)}</textarea></div><div class="field"><label for="autonomy">Autonomy</label><select id="autonomy" name="autonomy">${[['manual','Manual · approve every tool call'],['supervised','Supervised · start tasks yourself'],['autonomous','Autonomous · schedules can start tasks']].map(([v,l]) => `<option value="${v}" ${v===p.autonomy?'selected':''}>${l}</option>`).join('')}</select><p class="field-help">Every mode requires approval for email, GitHub writes, and agent changes to shared memory. Autonomous runs can incur model and search costs.</p></div><button class="primary" type="submit">Save settings</button></form>`;
+    }
+    if (route === (names[location.hash.slice(1)] ? location.hash.slice(1) : 'overview')) $('#main').innerHTML = html;
+  } catch (e) { toast(e.message); } finally { rendering = false; }
+}
+function newTask(agent = 'strategist') {
+  detailId = null;
+  modal('Give your operator a task.',`<form id="task-form"><div class="field"><label for="task-title">What should get done?</label><input id="task-title" name="title" required maxlength="160" placeholder="Research three competitors"></div><div class="field"><label for="task-prompt">Instructions and success criteria</label><textarea id="task-prompt" name="prompt" required rows="5" maxlength="20000" placeholder="Share the context, sources, and what a useful result looks like."></textarea></div><div class="field"><label for="task-agent">Agent</label><select id="task-agent" name="agent">${agentOptions(agent)}</select></div><p class="small muted">Running uses your configured model and may incur provider charges. External changes still require your approval.</p><div class="actions"><button class="primary" type="submit" name="start" value="true">Start task</button><button class="secondary" type="submit" name="start" value="false">Save draft</button></div></form>`);
+}
+async function taskDetail(id) {
+  const t = await api('tasks/' + id); detailId = id;
+  modal(escapeHTML(t.title), `<div class="detail-meta">${badge(t.status)}<span>${escapeHTML(agentName(t.agent))}</span><span>${t.steps} model steps</span></div><section class="detail-section"><h3>Instructions</h3><p class="result-text">${escapeHTML(t.prompt)}</p></section>${t.error?`<div class="notice error">${escapeHTML(t.error)}</div>`:''}${t.result?`<section class="detail-section"><h3>Result</h3><div class="result-text">${escapeHTML(t.result)}</div></section>`:''}${t.artifacts.length?`<section class="detail-section"><h3>Saved files</h3>${t.artifacts.map(a => `<a class="artifact-link" href="/api/artifacts/${a.id}" download>${escapeHTML(a.name)} ↓</a>`).join('')}</section>`:''}${t.approvals.filter(a => a.status==='pending').map(approvalCard).join('')}<section class="detail-section"><h3>Activity</h3>${events(t.events)}</section><div class="actions">${t.status==='draft'?`<button class="primary" data-run="${id}">Start task</button>`:''}${['draft','queued','running','waiting_approval'].includes(t.status)?`<button class="danger" data-cancel="${id}">Stop task</button>`:''}<button class="secondary" data-refresh="${id}">Refresh</button></div>`);
+}
+async function noteForm(key = '') {
+  detailId = null; const rows = key ? await api('memory') : [];
+  const note = rows.find(n => n.key===key);
+  modal(key?'Edit shared memory.':'Add shared memory.', `<form id="note-form"><div class="field"><label for="note-key">Name</label><input id="note-key" name="key" required pattern="[a-zA-Z0-9_-]{1,64}" maxlength="64" value="${escapeHTML(key)}" ${key?'readonly':''} placeholder="product"></div><div class="field"><label for="note-content">What should your agents know?</label><textarea id="note-content" name="content" maxlength="20000" rows="8">${escapeHTML(note?.content||'')}</textarea></div><button class="primary" type="submit">Save note</button></form>`);
+}
+function scheduleForm() {
+  detailId = null;
+  modal('Make a task repeat.', `<form id="schedule-form"><div class="field"><label for="schedule-name">Schedule name</label><input id="schedule-name" name="name" required maxlength="160" placeholder="Weekly product review"></div><div class="field"><label for="schedule-prompt">Task instructions</label><textarea id="schedule-prompt" name="prompt" required rows="4" maxlength="20000"></textarea></div><div class="form-grid"><div class="field"><label for="schedule-agent">Agent</label><select id="schedule-agent" name="agent">${agentOptions()}</select></div><div class="field"><label for="schedule-interval">Every, in minutes</label><input id="schedule-interval" name="interval_minutes" type="number" min="15" max="525600" value="1440" required></div></div><p class="small muted">First task arrives after this interval. Missed intervals produce one task, not a backlog.</p><button class="primary" type="submit">Create schedule</button></form>`);
+}
+document.addEventListener('click', async event => {
+  const el = event.target.closest('button'); if (!el) return;
+  try {
+    if (el.dataset.action==='close') { $('#modal').close(); detailId=null; }
+    if (el.dataset.action==='new-task') newTask();
+    if (el.dataset.action==='new-note') await noteForm();
+    if (el.dataset.action==='new-schedule') scheduleForm();
+    if (el.dataset.agent) newTask(el.dataset.agent);
+    if (el.dataset.task || el.dataset.refresh) await taskDetail(el.dataset.task || el.dataset.refresh);
+    if (el.dataset.note) await noteForm(el.dataset.note);
+    if (el.dataset.filter) { filter=el.dataset.filter; await render(); }
+    if (el.dataset.decision) { el.disabled=true; await mutate(`approvals/${el.dataset.decision}/decision`,{decision:el.dataset.value}); toast(el.dataset.value==='approve'?'Action approved. Task queued.':'Action rejected. Task stopped.'); if(detailId) await taskDetail(detailId); await render(); }
+    if (el.dataset.run || el.dataset.cancel) { el.disabled=true; const id=el.dataset.run||el.dataset.cancel; await mutate(`tasks/${id}/${el.dataset.run?'run':'cancel'}`); await taskDetail(id); await render(); }
+    if (el.dataset.schedule) { await mutate('schedules/'+el.dataset.schedule,{enabled:el.dataset.enabled==='true'},'PATCH'); await render(); }
+  } catch(e) { el.disabled=false; toast(e.message); }
+});
+document.addEventListener('submit', async event => {
+  event.preventDefault(); const form=event.target; const data=Object.fromEntries(new FormData(form)); const button=event.submitter; if(button)button.disabled=true;
+  try {
+    if(form.id==='login-form') { const result=await mutate('login',data); csrf=result.csrf_token; form.reset(); $('#login-error').textContent=''; await enter(); }
+    else if(form.id==='task-form') { data.start=button?.value==='true'; const t=await mutate('tasks',data); $('#modal').close(); toast(data.start?'Task queued.':'Draft saved.'); location.hash='tasks'; await render(); await taskDetail(t.id); }
+    else if(form.id==='note-form') { await mutate('memory/'+encodeURIComponent(data.key),{content:data.content},'PUT'); $('#modal').close(); toast('Memory saved.'); await render(); }
+    else if(form.id==='schedule-form') { data.interval_minutes=Number(data.interval_minutes); await mutate('schedules',data); $('#modal').close(); toast('Schedule created.'); await render(); }
+    else if(form.id==='settings-form') { await mutate('settings',data,'PATCH'); toast('Settings saved.'); await render(); }
+  } catch(e) { if(form.id==='login-form') $('#login-error').textContent=e.message; else toast(e.message); } finally { if(button)button.disabled=false; }
+});
+$('#logout').addEventListener('click', async () => { try { await mutate('logout'); showLogin(); } catch(e) { toast(e.message); } });
+$('#menu-toggle').addEventListener('click', () => { const open=$('#sidebar').classList.toggle('open'); $('#menu-toggle').setAttribute('aria-expanded',String(open)); });
+window.addEventListener('hashchange', () => { $('#sidebar').classList.remove('open'); $('#menu-toggle').setAttribute('aria-expanded','false'); render(); });
+$('#modal').addEventListener('close', () => { detailId=null; });
+async function enter() { agents=await api('agents'); $('#login').hidden=true; $('#workspace').hidden=false; await render(); }
+(async () => { try { csrf=(await api('session')).csrf_token; await enter(); } catch { showLogin(); } })();
+setInterval(() => { if(csrf && !$('#modal').open && !document.activeElement.closest('form') && current!=='settings' && !document.hidden) render(); }, 5000);

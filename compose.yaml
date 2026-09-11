@@ -1,0 +1,57 @@
+# Single host, single owner. TLS is supplied by the optional Caddy profile below.
+x-app: &app
+  build: .
+  image: agent4good:local
+  env_file: .env
+  environment:
+    A4G_DATA_DIR: /app/data
+  volumes:
+    - operator-data:/app/data
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  mem_limit: 512m
+  cpus: 1.0
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+services:
+  web:
+    <<: *app
+    ports: ["127.0.0.1:8000:8000"]
+  worker:
+    <<: *app
+    command: ["python", "-m", "agent4good.worker"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "agent4good.healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+    stop_grace_period: 120s
+    depends_on:
+      web:
+        condition: service_healthy
+  caddy:
+    image: caddy:2-alpine
+    profiles: [tls]
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      A4G_PUBLIC_ORIGIN: ${A4G_PUBLIC_ORIGIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+volumes:
+  operator-data:
+  caddy-data:
+  caddy-config:

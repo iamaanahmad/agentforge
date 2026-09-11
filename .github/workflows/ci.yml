@@ -1,0 +1,46 @@
+name: Verify
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - run: uv sync --frozen --group dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --check agent4good/static/app.js
+      - run: uv build
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t agent4good:ci .
+      - name: Smoke test both processes
+        run: |
+          python3 - <<'PY'
+          import secrets
+          with open('.env', 'w') as f:
+              f.write('A4G_ADMIN_PASSWORD=' + secrets.token_urlsafe(32) + '\n')
+              f.write('A4G_SESSION_SECRET=' + secrets.token_urlsafe(48) + '\n')
+              f.write('A4G_SECURE_COOKIES=false\nA4G_PUBLIC_ORIGIN=http://localhost:8000\n')
+          PY
+          docker compose up --build -d --wait --wait-timeout 120
+          curl --fail http://localhost:8000/healthz
+          docker compose exec -T worker python -m agent4good.healthcheck
+      - if: always()
+        run: docker compose down -v
