@@ -54,3 +54,15 @@ Before upgrades, back up the database and retain the prior image. This first rel
 ## Go-live evidence
 
 The repository's tests and container CI prove local code paths, not your live provider access or host reliability. Record a successful authenticated HTTPS session, worker heartbeat, artifact run, backup/restore, and any enabled external integration's bounded acceptance test before declaring your deployment production-ready.
+
+## Repeatable recovery acceptance
+
+Run `uv run pytest -q tests/test_release_acceptance.py` before releasing changes.
+This invokes the backup command against tagged test data and restores into a separate temporary directory.
+It checks owner authentication, exact saved approval, artifact retrieval, and completed receipts after restart.
+It also checks that interrupted work stays failed and existing backup files cannot be overwritten.
+Pytest uses disposable data; no external message is sent and no provider key is inherited by the backup process.
+
+This is application integration evidence with scripted model responses, not a live deployment test.
+A restored backup can predate external writes. Inspect provider receipts before resuming restored approvals or queued tasks.
+Do not run the original and restored workers together. A database backup cannot roll back a provider action.
