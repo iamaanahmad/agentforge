@@ -28,6 +28,13 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 | Paid growth and creative | Campaign plans, copy and creative briefs | Ad activation, image/video generation, real budget management |
 | Agent operations | Nine role prompts, durable tasks, schedules, memory, approvals, audit events | Parallel subagents, browser automation, plugins/MCP, multi-tenant SaaS, SSO |
 
+Evidence for the included paths: [API checks](tests/test_app.py), [engine checks](tests/test_engine.py),
+[tool checks](tests/test_tools.py), and [provider contract checks](tests/test_provider.py).
+[Release acceptance checks](tests/test_release_acceptance.py) restore a real SQLite backup into a separate workspace.
+They verify saved approvals, artifact retrieval, and refusal to replay interrupted work.
+Model responses in these tests are scripted. No capability has live provider or production acceptance evidence yet.
+The missing capabilities above remain planned, not available integrations.
+
 Roles describe how an agent works. They do not manufacture access to a service. Do not grant this worker an unrestricted shell or mount a Docker socket to fill those gaps.
 
 ## Run locally
