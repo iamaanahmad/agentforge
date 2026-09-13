@@ -259,7 +259,12 @@ def dispatch(db, settings, registry, current=None):
                 conn.execute("UPDATE schedules SET enabled=0 WHERE id=?", (row["id"],))
                 continue
             creator = definition["creator"] if definition else None
-            due = instant(row["next_run_at"])
+            if not definition or data.get("_legacy"):
+                # Older storage accepted date-only timestamps; interpret them as UTC.
+                due = datetime.fromisoformat(row["next_run_at"])
+                due = due.replace(tzinfo=timezone.utc) if due.tzinfo is None else due.astimezone(timezone.utc)
+            else:
+                due = instant(row["next_run_at"])
             occurrence = row["next_run_at"]
             expired = bool(spec.deadline and ts > instant(spec.deadline))
             if spec.mode == "event" and not expired:

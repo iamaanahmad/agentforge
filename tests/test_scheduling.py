@@ -439,3 +439,18 @@ def test_resume_respects_active_schedule_cap(settings):
         with pytest.raises(sch.ScheduleError, match="Active schedule limit"):
             sch.control(conn, sid, enabled=True)
     assert db.one("SELECT enabled FROM schedules WHERE id=?", (sid,))["enabled"] == 0
+
+
+def test_legacy_date_only_occurrence_migrates(settings):
+    db, registry = setup(settings)
+    db.execute(
+        "INSERT INTO schedules VALUES ('legacy-date','Legacy','Facts','strategist',1440,1,'2000-01-01',?)",
+        (now(),),
+    )
+    assert sch.dispatch(db, settings, registry) == 1
+    assert sch.dispatch(db, settings, registry) == 0
+    assert len(tasks(db, "legacy-date")) == 1
+    assert (
+        db.one("SELECT occurrence FROM schedule_occurrences WHERE schedule_id='legacy-date'")["occurrence"]
+        == "2000-01-01"
+    )
