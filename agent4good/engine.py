@@ -1,3 +1,4 @@
+from .credentials import TASK_CONTEXT
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -24,19 +25,23 @@ Finish with a concise plain-language result, evidence, and any remaining limitat
 class Engine:
     def __init__(self, db, settings, provider=None, registry=None):
         self.db, self.settings = db, settings
-        self.provider = provider or ResponsesProvider(settings)
         self.registry = registry or ToolRegistry(settings, db)
+        self.provider = provider or ResponsesProvider(settings, self.registry.credentials)
 
     def claim(self):
         with self.db.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                "UPDATE tasks SET status='failed',error='Task is outside the owner boundary',updated_at=? WHERE status='queued' AND owner_id!='owner'",
+                (now(),),
+            )
             count = conn.execute(
                 "SELECT COUNT(*) FROM events WHERE kind='started' AND created_at>=?", (now()[:10],)
             ).fetchone()[0]
             if count >= self.settings.max_daily_runs:
                 return None
             row = conn.execute(
-                "SELECT id FROM tasks WHERE status='queued' ORDER BY created_at LIMIT 1"
+                "SELECT id FROM tasks WHERE status='queued' AND owner_id='owner' ORDER BY created_at LIMIT 1"
             ).fetchone()
             if not row:
                 return None
@@ -57,14 +62,10 @@ class Engine:
                 if isinstance(exc, (ValueError, RuntimeError))
                 else "Run failed. Check server logs and provider status."
             )
-            for secret in (
-                self.settings.openai_api_key,
-                self.settings.github_token,
-                self.settings.resend_api_key,
-                self.settings.search_api_key,
-            ):
-                if secret:
-                    message = message.replace(secret, "[redacted]")
+            try:
+                message = self._redact(message)
+            except RuntimeError:
+                message = "Credential integrity or configuration failed; inspect the private vault"
             changed = self.db.execute(
                 "UPDATE tasks SET status='failed',error=?,updated_at=? WHERE id=? AND status='running'",
                 (message[:1000], now(), task_id),
@@ -73,18 +74,26 @@ class Engine:
                 self.db.event(task_id, "failed", message)
 
     def _active(self, task_id):
-        return self.db.task(task_id)["status"] == "running"
+        task = self.db.task(task_id)
+        self.db.require_owner(task)
+        return task["status"] == "running"
 
     def _save(self, task_id, items, pending):
         self.db.execute(
             "UPDATE tasks SET items=?,pending=?,updated_at=? WHERE id=? AND status='running'",
-            (json.dumps(items), json.dumps(pending), now(), task_id),
+            (
+                json.dumps(self.registry.credentials.redact(items)),
+                json.dumps(self.registry.credentials.redact(pending)),
+                now(),
+                task_id,
+            ),
         )
 
     def _run(self, task_id):
         task = self.db.task(task_id)
         if not task or task["status"] != "running":
             return
+        self.db.require_owner(task)
         items = json.loads(task["items"]) or [{"role": "user", "content": task["prompt"]}]
         pending = json.loads(task["pending"])
         if len(json.dumps(items)) > 400000:
@@ -132,7 +141,16 @@ class Engine:
                 "UPDATE tasks SET steps=steps+1,updated_at=? WHERE id=? AND status='running'",
                 (now(), task_id),
             )
-            response = self.provider.respond(instructions, items, self.registry.definitions())
+            token = TASK_CONTEXT.set(task_id)
+            try:
+                response = self.provider.respond(
+                    self._redact(instructions),
+                    self.registry.credentials.redact(items),
+                    self.registry.definitions(),
+                )
+            finally:
+                TASK_CONTEXT.reset(token)
+            response = self.registry.credentials.redact(response)
             if not self._active(task_id):
                 return
             output = response["output"]
@@ -164,17 +182,7 @@ class Engine:
                 return
 
     def _redact(self, text):
-        for secret in (
-            self.settings.admin_password,
-            self.settings.session_secret,
-            self.settings.openai_api_key,
-            self.settings.github_token,
-            self.settings.resend_api_key,
-            self.settings.search_api_key,
-        ):
-            if secret:
-                text = text.replace(secret, "[redacted]")
-        return text
+        return self.registry.credentials.redact(text)
 
     def schedule_due(self):
         ts = now()
@@ -194,7 +202,7 @@ class Engine:
 
     def recover(self):
         # Ambiguous external calls cannot safely be retried. Owner inspects receipts before a new run.
-        tasks = self.db.all("SELECT id FROM tasks WHERE status='running'")
+        tasks = self.db.all("SELECT id FROM tasks WHERE status='running' AND owner_id='owner'")
         for task in tasks:
             self.db.execute(
                 "UPDATE tasks SET status='failed',error=?,updated_at=? WHERE id=? AND status='running'",

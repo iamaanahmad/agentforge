@@ -1,5 +1,7 @@
 """Bounded service adapters. The model never chooses credentials, repositories or shell commands."""
 
+from .credentials import CredentialBroker, TASK_CONTEXT, TOOL_CONTEXT
+
 import base64
 import json
 import time
@@ -287,13 +289,18 @@ class PinnedHTTPSConnection(http.client.HTTPSConnection):
 class ToolRegistry:
     def __init__(self, settings, db=None):
         self.settings, self.db = settings, db
+        self.credentials = CredentialBroker(settings, db) if db else None
         self.policy = PolicyEngine(db, settings) if db else None
         if db:
             self.policy.migrate_legacy(SPECS)
 
     def availability(self, name):
         spec = SPECS[name]
-        missing = [key for key in spec.authentication if not getattr(self.settings, key)]
+        missing = [
+            key
+            for key in spec.authentication
+            if not (self.credentials.configured(key) if self.credentials else getattr(self.settings, key))
+        ]
         if self.db is None:
             missing.append("workspace database")
         if missing:
@@ -360,19 +367,19 @@ class ToolRegistry:
             {
                 "id": "openai",
                 "name": "OpenAI",
-                "configured": bool(s.openai_api_key),
+                "configured": self.credentials.configured("openai_api_key"),
                 "description": "Model reasoning and tool calls. Set A4G_OPENAI_API_KEY on the server.",
             },
             {
                 "id": "github",
                 "name": "GitHub",
-                "configured": bool(s.github_token and s.github_repo),
+                "configured": self.credentials.configured("github_token") and bool(s.github_repo),
                 "description": "Read code and issues. Propose branch changes and draft pull requests after approval.",
             },
             {
                 "id": "brave",
                 "name": "Brave Search",
-                "configured": bool(s.search_api_key),
+                "configured": self.credentials.configured("search_api_key"),
                 "description": "Public web research. Set A4G_SEARCH_API_KEY.",
             },
             {
@@ -384,7 +391,7 @@ class ToolRegistry:
             {
                 "id": "resend",
                 "name": "Resend",
-                "configured": bool(s.resend_api_key and s.mail_from),
+                "configured": self.credentials.configured("resend_api_key") and bool(s.mail_from),
                 "description": "Send exact approved emails from your verified domain.",
             },
         ]
@@ -393,6 +400,7 @@ class ToolRegistry:
         with httpx.Client(
             timeout=httpx.Timeout(min(25, self._remaining()), connect=min(10, self._remaining())),
             follow_redirects=False,
+            trust_env=False,
         ) as client:
             with client.stream(method, url, headers=headers, json=payload) as response:
                 if response.status_code >= 300:
@@ -415,7 +423,7 @@ class ToolRegistry:
             method,
             "https://api.github.com/repos/" + repo + endpoint,
             {
-                "Authorization": "Bearer " + self.settings.github_token,
+                "Authorization": "Bearer " + self.credentials.get("github_token", TOOL_CONTEXT.get()),
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
             },
@@ -519,7 +527,7 @@ class ToolRegistry:
                 "GET",
                 "https://api.search.brave.com/res/v1/web/search?"
                 + urlencode({"q": args["query"][:500], "count": 5}),
-                {"X-Subscription-Token": self.settings.search_api_key},
+                {"X-Subscription-Token": self.credentials.get("search_api_key", "web_search")},
             )
             return [
                 {"title": r.get("title"), "url": r.get("url"), "description": r.get("description")}
@@ -588,7 +596,7 @@ class ToolRegistry:
             data = self._request(
                 "POST",
                 "https://api.resend.com/emails",
-                {"Authorization": "Bearer " + self.settings.resend_api_key},
+                {"Authorization": "Bearer " + self.credentials.get("resend_api_key", "send_email")},
                 {
                     "from": self.settings.mail_from,
                     "to": [args["to"]],
@@ -600,17 +608,7 @@ class ToolRegistry:
         raise ToolError("Unknown tool")
 
     def _redact(self, text):
-        for secret in (
-            self.settings.admin_password,
-            self.settings.session_secret,
-            self.settings.openai_api_key,
-            self.settings.github_token,
-            self.settings.resend_api_key,
-            self.settings.search_api_key,
-        ):
-            if secret:
-                text = text.replace(secret, "[redacted]")
-        return text
+        return self.credentials.redact(text)
 
     def _internal(self, task_id, name, args):
         self._remaining()
@@ -657,6 +655,8 @@ class ToolRegistry:
 
     def _invoke(self, name, args, *, task_id=None, call_id=None):
         args = deepcopy(args)
+        if self.credentials and self.credentials.redact(args) != args:
+            raise ToolError("Credentials must not appear in tool arguments")
         validate_arguments(name, args)
         if self.db is None or not task_id or not call_id:
             raise ToolError("Execution requires a workspace task and audited call ID")
@@ -726,7 +726,13 @@ class ToolRegistry:
                 ):
                     raise ToolError("Authorization changed before dispatch")
                 self.policy.check(conn, fresh, task_id, call_id, name, args)
-            result = self._dispatch(task_id, name, args)
+            task_token = TASK_CONTEXT.set(task_id)
+            tool_token = TOOL_CONTEXT.set(name)
+            try:
+                result = self._dispatch(task_id, name, args)
+            finally:
+                TOOL_CONTEXT.reset(tool_token)
+                TASK_CONTEXT.reset(task_token)
             self._remaining()
             validate_schema(spec.output_schema, result, "output")
             result_json = self._redact(json.dumps(result))

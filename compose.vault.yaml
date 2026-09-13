@@ -1,0 +1,18 @@
+# Optional encrypted-vault overlay. Keep key files outside the operator-data volume.
+services:
+  web:
+    environment:
+      A4G_CREDENTIAL_KEY_FILE: /run/a4g-keys/keyring.json
+    volumes:
+      - type: bind
+        source: ${A4G_KEYRING_HOST_PATH:?Set a separately protected host key directory}
+        target: /run/a4g-keys
+        read_only: true
+  worker:
+    environment:
+      A4G_CREDENTIAL_KEY_FILE: /run/a4g-keys/keyring.json
+    volumes:
+      - type: bind
+        source: ${A4G_KEYRING_HOST_PATH:?Set a separately protected host key directory}
+        target: /run/a4g-keys
+        read_only: true

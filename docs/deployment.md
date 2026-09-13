@@ -49,7 +49,7 @@ Restore procedure:
 - Invalid host or sign-in failure: verify exact allowed hosts, HTTPS origin, secure cookies, and reverse-proxy routing.
 - Duplicate worker: the second process exits because the file lock is held. Do not scale the worker service.
 
-Before upgrades, back up the database and retain the prior image. This first release has no migration history. Review future migration notes before replacing an existing installation.
+Before upgrades, back up the database and retain the prior image. Schema version 3 preserves owner data and binds the database to its configured tenant and environment. Existing sessions require fresh login. Read [vault migration notes](credential-security.md) before changing configuration.
 
 ## Go-live evidence
 
