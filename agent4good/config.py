@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="A4G_", env_file=".env", extra="ignore")
+    environment: str = Field("local", min_length=1, max_length=160)
     data_dir: Path = Path("data")
     admin_password: str = ""
     session_secret: str = ""

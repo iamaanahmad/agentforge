@@ -1,5 +1,5 @@
 import socket
-from agent4good.tools import ToolRegistry, ToolError, public_addresses, validate_arguments
+from agent4good.tools import SPECS, ToolRegistry, ToolError, public_addresses, validate_arguments
 import pytest
 from pydantic import ValidationError
 from agent4good.config import Settings
@@ -20,6 +20,12 @@ def permit(r, task, name, args, call_id="check"):
         "VALUES (?,?,?,?,?,'approved',?)",
         (task + call_id, task, call_id, name, json.dumps(args), now()),
     )
+    with r.db.connect() as conn:
+        approval = conn.execute(
+            "SELECT * FROM approvals WHERE task_id=? AND call_id=?", (task, call_id)
+        ).fetchone()
+        decision = r.policy.evaluate(conn, r.db.task(task), SPECS[name], args)
+        r.policy.bind(conn, approval, decision)
 
 
 def test_settings_refuse_unsafe_defaults():

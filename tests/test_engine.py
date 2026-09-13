@@ -185,6 +185,8 @@ def test_claim_atomic_and_daily_limit(settings):
 
 
 def test_ambiguous_external_failure_does_not_retry(settings):
+    settings.resend_api_key = "test-key"
+    settings.mail_from = "owner@example.com"
     args = {"to": "person@example.com", "subject": "Hello", "body": "A message"}
     p = FakeProvider(answer(calls=[call("send_email", args)]))
     db, e, t = make(settings, p)
