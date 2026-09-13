@@ -296,6 +296,7 @@ def serve():
     # Prebind: Uvicorn's uds convenience path otherwise chmods sockets to 0666.
     import socket
     import stat
+
     if socket_path.exists() or socket_path.is_symlink():
         if not stat.S_ISSOCK(socket_path.lstat().st_mode):
             raise SandboxError("Refusing to replace a non-socket path")
