@@ -23,6 +23,7 @@ from .memory import MemoryInput, MemoryStore, MemoryError
 from .catalog import AGENTS
 from . import missions, scheduling
 from .quality import QualityInput
+from .learning import LearningStore, Correction, verified_document
 from .scheduling import ScheduleInput
 from .config import Settings
 from .model_config import WorkType, task_work
@@ -617,6 +618,43 @@ def create_app(settings=None):
         return registry.credentials.redact(
             MemoryStore(db).search(task_id, query or task["prompt"], settings.memory_context_budget)
         )
+
+    @app.get("/api/outcomes", dependencies=[Depends(auth)])
+    def outcomes(task_id: str | None = None, offset: int = 0):
+        if task_id and (not db.task(task_id) or db.task(task_id)["owner_id"] != "owner"):
+            raise HTTPException(404, "Task not found")
+        return registry.credentials.redact(LearningStore(db).inspect(task_id, offset))
+
+    @app.get("/api/outcomes/{outcome_id}/evidence/{sha256}", dependencies=[Depends(auth)])
+    def outcome_evidence(outcome_id: str, sha256: str):
+        from .memory import digest
+
+        row = db.one(
+            "SELECT e.document FROM learning_evidence e JOIN learning_outcomes o ON o.id=e.outcome_id JOIN tasks t ON t.id=o.task_id WHERE e.outcome_id=? AND e.sha256=? AND o.owner_id='owner' AND t.owner_id='owner'",
+            (outcome_id, sha256),
+        )
+        if not row or digest(row["document"]) != sha256:
+            raise HTTPException(404, "Evidence not found")
+        return registry.credentials.redact(json.loads(row["document"]))
+
+    @app.post("/api/outcomes/{outcome_id}/notes", dependencies=[Depends(auth)])
+    def outcome_note(outcome_id: str, payload: Correction):
+        try:
+            return LearningStore(db).correct(outcome_id, registry.credentials.redact(payload.model_dump()))
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+
+    @app.get("/api/tasks/{task_id}/learning", dependencies=[Depends(auth)])
+    def learning(task_id: str):
+        task = db.task(task_id)
+        if not task or task["owner_id"] != "owner":
+            raise HTTPException(404, "Task not found")
+        records = LearningStore(db).search(task_id, task["prompt"], settings.memory_context_budget)
+        uses = [
+            verified_document(r)
+            for r in db.all("SELECT * FROM learning_uses WHERE task_id=? ORDER BY step", (task_id,))
+        ]
+        return registry.credentials.redact({**records, "uses": [u for u in uses if u]})
 
     @app.get("/api/schedules", dependencies=[Depends(auth)])
     def schedules():

@@ -30,6 +30,7 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 | Browser work | Exact-approved isolated Chromium journeys, forms, file transfer, tabs, screenshots, encrypted task sessions | Unrestricted browsing, challenge bypass, cross-task session sharing, production browser hosting |
 | Memory | Private working snapshots, past-run episodes, sourced facts, bounded lexical retrieval, versioned corrections and quarantine | Embedding search, automatic document ingestion, multi-user memory |
 | Missions | Immutable objectives and criteria, bounded dependent plans, shared limits, revisions, pause/cancel, receipt and owner evidence checks | Automatic mission-wide semantic acceptance |
+| Outcome learning | Evidence-linked completed, failed, and abandoned attempts; planning reuse; owner corrections and invalidations | Model training, automatic policy changes, measured performance gains |
 | Quality | Owner-defined executable checks, isolated critics, bounded builder revisions, separate verifiers, saved evidence | Visual critics, proof of arbitrary claims, live model quality evidence |
 | Scheduling | One-time, daily time-zone recurrence, deadline, event, and condition triggers; dependencies, priorities, atomic occurrence receipts | Cron expressions, arbitrary code or network conditions, hard completion deadlines |
 | Agent operations | Nine executable specialist roles, bounded child workers, durable messages and contexts, tasks, schedules, memory, approvals | Plugins/MCP, multi-tenant SaaS, SSO |
@@ -185,3 +186,10 @@ Scheduling behavior, APIs, migration, and dispatch guarantees: [dependency-aware
 Critical tasks can require separate critic and verifier workers against owner-defined evidence checks.
 Failed checks trigger bounded revisions; missing evidence cannot pass. Configure task contracts or server defaults through [the quality guide](docs/independent-quality.md).
 Existing tasks keep their prior behavior. Scripted acceptance proves runtime boundaries, not live model correctness.
+
+## Evidence-linked outcome learning
+
+Completed, failed, and cancelled attempts retain actions, timing, costs, and verification evidence.
+Later plans can retrieve relevant outcomes and record their reported effect on the next actions.
+Owner corrections and invalidations remove stale lessons from recall. Estimates and interpretations stay explicitly unverified.
+See [outcome learning](docs/outcome-learning.md) for APIs, trust limits, migration, and tests.

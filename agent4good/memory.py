@@ -263,6 +263,16 @@ class MemoryStore:
         docs = self.inspect(task_id=task_id, limit=1000)
         scored = []
         for doc in docs:
+            # Outcome corrections also retire the compatibility episode from automatic recall.
+            if (
+                doc["actor"] == "runtime_observation"
+                and doc["layer"] == "episodic"
+                and self.db.one(
+                    "SELECT 1 FROM learning_outcomes o JOIN learning_notes n ON n.outcome_id=o.id WHERE o.task_id=? AND n.status='active'",
+                    (doc["task_id"],),
+                )
+            ):
+                continue
             words = terms(doc["key"] + " " + doc["content"])
             overlap = query_terms & words
             if not overlap:

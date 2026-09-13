@@ -429,7 +429,7 @@ def test_layered_memory_runtime_backup_restore(distributed, tmp_path):
     backup = tmp_path / "memory-backup.json"
     backup_postgres(db, backup)
     document = json.loads(backup.read_text())
-    assert document["version"] == 6
+    assert document["version"] == 7
     assert len(document["tables"]["memory_records"]) >= 4
     # Restore into a second disposable schema using the same domain and object prefix.
     from psycopg.conninfo import make_conninfo
@@ -593,6 +593,56 @@ def test_quality_postgres_workers_evidence_and_restore(distributed, tmp_path):
         )
         assert target.all("SELECT * FROM quality_reviews ORDER BY task_id") == db.all(
             "SELECT * FROM quality_reviews ORDER BY task_id"
+        )
+    finally:
+        with psycopg.connect(DSN, autocommit=True) as conn:
+            conn.execute(f"DROP SCHEMA {schema} CASCADE")
+
+
+def test_learning_postgres_reuse_correction_and_restore(distributed, tmp_path):
+    from agent4good.learning import LearningStore
+    from psycopg.conninfo import make_conninfo
+    from test_engine import FakeProvider, answer
+
+    settings, db = distributed
+    tid = db.create_task("PostgreSQL learning", "PostgreSQL learning", "strategist", True)
+    engine = Engine(db, settings, FakeProvider(answer("PostgreSQL lesson observed")))
+    assert engine.claim() == tid
+    engine.run(tid)
+    store = LearningStore(db)
+    outcome = store.inspect(tid)[0]
+    later = db.create_task("PostgreSQL learning", "PostgreSQL learning", "strategist", True)
+    provider = FakeProvider(
+        answer(f"Learning use: {outcome['id']}: Reuse the documented PostgreSQL approach.")
+    )
+    engine = Engine(db, settings, provider)
+    assert engine.claim() == later
+    engine.run(later)
+    assert db.task(later)["status"] == "done", db.task(later)["error"]
+    assert db.all("SELECT * FROM learning_uses WHERE task_id=?", (later,))
+    store.correct(
+        outcome["id"],
+        {"kind": "invalidation", "text": "PostgreSQL observation contradicted", "source": "owner check"},
+    )
+    assert not store.search(later, "PostgreSQL", 4000)["records"]
+    backup = tmp_path / "learning.json"
+    backup_postgres(db, backup)
+    schema = "restored_" + uuid4().hex
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(f"CREATE SCHEMA {schema}")
+    try:
+        target = PostgresDatabase(
+            settings.model_copy(
+                update={"database_url": make_conninfo(DSN, options=f"-c search_path={schema}")}
+            )
+        )
+        restore_postgres(target, backup)
+        assert LearningStore(target).inspect(tid) == store.inspect(tid)
+        assert target.all("SELECT * FROM learning_uses ORDER BY id") == db.all(
+            "SELECT * FROM learning_uses ORDER BY id"
+        )
+        assert target.all("SELECT * FROM learning_evidence ORDER BY sha256") == db.all(
+            "SELECT * FROM learning_evidence ORDER BY sha256"
         )
     finally:
         with psycopg.connect(DSN, autocommit=True) as conn:
