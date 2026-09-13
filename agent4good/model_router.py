@@ -87,7 +87,13 @@ class ModelRouter:
         )
         tokens = input_reserve + profile.max_output_tokens
         cost = 0
-        if self.settings.max_task_model_cost_usd is not None:
+        with self.db.connect() as conn:
+            from .missions import mission_for
+
+            mission = mission_for(conn, task_id)
+            mission_cost = json.loads(mission["spec"])["budget"]["model_cost_usd"] if mission else None
+        priced = self.settings.max_task_model_cost_usd is not None or mission_cost is not None
+        if priced:
             if profile.input_usd_per_million is None or profile.output_usd_per_million is None:
                 raise ProviderError(
                     "budget", "A model cost limit requires owner-configured input and output prices"
@@ -122,8 +128,11 @@ class ModelRouter:
                     )
                 if used[1] + cost > int(self.settings.max_task_model_cost_usd * 1000000):
                     raise ProviderError("budget", "Task estimated model cost limit reached")
-            else:
+            if not priced:
                 cost = -1
+            from .missions import reserve_model
+
+            reserve_model(conn, task_id, tokens, cost)
             conn.execute(
                 "INSERT INTO model_calls VALUES (?,?,?,?,?,?,?)",
                 (call_id, task_id, tokens, cost, "reserved", None, now()),

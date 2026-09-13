@@ -14,6 +14,7 @@ from psycopg import sql
 
 from .artifacts import ObjectStore
 from .db import Database
+from .missions import TABLES as MISSION_TABLES
 
 TABLES = [
     "settings",
@@ -44,6 +45,9 @@ TABLES = [
     "memory_records",
     "memory_migrations",
 ]
+
+
+TABLES += MISSION_TABLES
 
 
 def encode(value):
@@ -113,8 +117,10 @@ def migrate_sqlite(source, backup, db):
     fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     os.close(fd)
     with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as src, sqlite3.connect(backup) as dst:
-        if src.execute("PRAGMA user_version").fetchone()[0] not in {5, 6, 7}:
-            raise ValueError("Migration supports SQLite schema 5, 6 or 7; upgrade the source offline first")
+        if src.execute("PRAGMA user_version").fetchone()[0] not in {5, 6, 7, 8}:
+            raise ValueError(
+                "Migration supports SQLite schema 5, 6, 7 or 8; upgrade the source offline first"
+            )
         src.backup(dst)
         if (
             dst.execute("PRAGMA integrity_check").fetchone()[0] != "ok"
@@ -133,7 +139,7 @@ def backup_postgres(db, destination):
         store = ObjectStore(db.config)
         for row in tables["artifact_objects"]:
             objects[row["object_key"]] = store.read(row["object_key"], row["sha256"])
-        document = {"version": 3, "tables": tables, "objects": objects}
+        document = {"version": 4, "tables": tables, "objects": objects}
         data = json.dumps(document, default=encode).encode()
     # Exclusive create prevents accidentally replacing a previous backup.
     fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -151,7 +157,12 @@ def restore_postgres(db, source):
     workers = {"worker_nodes", "worker_context", "worker_messages", "worker_resources"}
     memory = {"memory_records", "memory_migrations"}
     expected = set(TABLES + ["artifact_objects"])
-    missing = {1: workers | memory, 2: memory, 3: set()}.get(document.get("version"))
+    missing = {
+        1: workers | memory | set(MISSION_TABLES),
+        2: memory | set(MISSION_TABLES),
+        3: set(MISSION_TABLES),
+        4: set(),
+    }.get(document.get("version"))
     if missing is None or set(document["tables"]) != expected - missing:
         raise ValueError("Unsupported backup format")
     document["tables"].update({table: [] for table in missing})

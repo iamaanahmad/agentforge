@@ -60,7 +60,7 @@ class Engine:
             if count >= self.settings.max_daily_runs:
                 return None
             row = conn.execute(
-                "SELECT t.id FROM tasks t LEFT JOIN worker_nodes n ON t.id=n.task_id WHERE t.status='queued' AND t.owner_id='owner' ORDER BY COALESCE(n.priority,0) DESC,t.created_at,t.id LIMIT 1"
+                "SELECT t.id FROM tasks t LEFT JOIN worker_nodes n ON t.id=n.task_id WHERE t.status='queued' AND t.owner_id='owner' AND NOT EXISTS (SELECT 1 FROM mission_nodes mn JOIN missions mm ON mm.id=mn.mission_id JOIN worker_nodes wn ON wn.root_id=mn.task_id WHERE wn.task_id=t.id AND mm.status!='running') ORDER BY COALESCE(n.priority,0) DESC,t.created_at,t.id LIMIT 1"
             ).fetchone()
             if not row:
                 return None
@@ -89,6 +89,16 @@ class Engine:
             if isinstance(exc, LeaseLost):
                 raise
             # Provider exceptions may carry request headers. Never persist raw HTTP exceptions.
+            from .missions import mission_for
+
+            with self.db.connect() as conn:
+                m = mission_for(conn, task_id)
+                if m and m["status"] == "paused":
+                    conn.execute(
+                        "UPDATE tasks SET status='queued',updated_at=? WHERE id=? AND status='running'",
+                        (now(), task_id),
+                    )
+                    return
             message = (
                 str(exc)
                 if isinstance(exc, (ValueError, RuntimeError))
@@ -129,6 +139,16 @@ class Engine:
             from .coordination import ancestors
 
             if any(p["status"] in {"done", "failed", "cancelled"} for p in ancestors(conn, task_id)):
+                return False
+        from .missions import mission_for
+
+        with self.db.connect() as conn:
+            m = mission_for(conn, task_id)
+            if m and m["status"] != "running":
+                conn.execute(
+                    "UPDATE tasks SET status='queued',updated_at=? WHERE id=? AND status='running'",
+                    (now(), task_id),
+                )
                 return False
         return task["status"] == "running"
 
@@ -236,6 +256,10 @@ class Engine:
                 from .coordination import budget_step
 
                 budget_step(conn, task_id, self.settings)
+            from .missions import context
+
+            with self.db.connect() as conn:
+                instructions += context(conn, task_id)
             memory_context = self._memory_context(task)
             token = TASK_CONTEXT.set(task_id)
             try:

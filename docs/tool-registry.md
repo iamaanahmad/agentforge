@@ -86,3 +86,7 @@ Its offline renderer, HTTPS relay, and session limits are documented in [Browser
 `memory_search` reads scoped records within the context budget.
 `memory_store` saves sourced records or explicit corrections with exact approval.
 The original named-note tools remain available. See [layered memory](layered-memory.md).
+
+## Mission planning
+
+`mission_status` and `mission_plan` are exposed only to mission planner tasks. They inspect immutable mission contracts and append validated dependent plans. Their calls share mission budgets and durable receipts. Ordinary tasks cannot invoke them. See [missions](missions.md).
