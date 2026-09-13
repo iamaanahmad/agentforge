@@ -132,7 +132,7 @@ python3 -m py_compile app.py
 ruff check app.py
 printf '.global _start\\n_start: mov $60, %%rax; xor %%rdi, %%rdi; syscall\\n' > hello.s
 gcc -nostdlib -static -o hello hello.s
-printf 'FROM scratch\nCOPY app.py /app.py\nCMD ["/app.py"]\n' > Dockerfile
+printf 'FROM scratch\nCOPY hello /hello\nCMD ["/hello"]\n' > Dockerfile
 python3 -I /opt/a4g/image.py Dockerfile image.tar
 """
     result = real_backend.run(job(script, artifacts=["app.py", "image.tar"]))
