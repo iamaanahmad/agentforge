@@ -82,8 +82,12 @@ class PostgresDatabase(Database):
                 if exists is None:
                     conn.raw.execute((Path(__file__).parent / "postgres.sql").read_text())
                 version = conn.execute("SELECT version FROM schema_version WHERE id=1").fetchone()[0]
-                if version != 1:
+                if version not in {1, 2}:
                     raise RuntimeError("Unsupported PostgreSQL schema version")
+                from .coordination import initialize
+
+                initialize(conn)
+                conn.execute("UPDATE schema_version SET version=2 WHERE id=1")
                 for key, value in {"name": "Agent4Good", "goal": "", "autonomy": "supervised"}.items():
                     conn.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, value))
                 conn.execute("INSERT OR IGNORE INTO action_policy VALUES (1,1,'{}')")
@@ -157,6 +161,9 @@ class PostgresDatabase(Database):
 
     def claim(self, settings):
         with self.connect() as conn:
+            from .coordination import settle
+
+            settle(conn)
             conn.execute(
                 "UPDATE tasks SET status='failed',error='Task is outside the owner boundary',updated_at=? "
                 "WHERE status='queued' AND owner_id!='owner'",
@@ -169,8 +176,8 @@ class PostgresDatabase(Database):
             if running >= settings.max_concurrent_runs or daily >= settings.max_daily_runs:
                 return None
             row = conn.execute(
-                "SELECT id FROM tasks WHERE status='queued' AND owner_id='owner' "
-                "ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED"
+                "SELECT t.id FROM tasks t LEFT JOIN worker_nodes n ON t.id=n.task_id WHERE t.status='queued' AND t.owner_id='owner' "
+                "ORDER BY COALESCE(n.priority,0) DESC,t.created_at,t.id LIMIT 1 FOR UPDATE OF t SKIP LOCKED"
             ).fetchone()
             if not row:
                 return None

@@ -2,7 +2,7 @@
 
 A self-hosted AI growth and product operator. Give it an outcome, choose an agent, and review the work in one private workspace.
 
-**Status: working v0.1 release candidate for one owner, with SQLite or an optional PostgreSQL worker stack.** This is an original implementation, not a copy of Tin's private platform. Production deployment requires your own API credentials, HTTPS host, backups, and a live acceptance test. Nine specialist roles are included. Each worker runs one task at a time; PostgreSQL permits multiple worker processes.
+**Status: working v0.1 release candidate for one owner, with SQLite or an optional PostgreSQL worker stack.** This is an original implementation, not a copy of Tin's private platform. Production deployment requires your own API credentials, HTTPS host, backups, and a live acceptance test. Nine specialist roles are included. A bounded worker pool runs delegated child tasks concurrently; PostgreSQL permits worker replicas.
 
 ## What works
 
@@ -28,7 +28,7 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 | Support and sales | Supplied-ticket analysis, exact approved Resend email sends | Inbound inbox sync, CRM, bulk sequences, LinkedIn |
 | Paid growth and creative | Campaign plans, copy and creative briefs | Ad activation, image/video generation, real budget management |
 | Browser work | Exact-approved isolated Chromium journeys, forms, file transfer, tabs, screenshots, encrypted task sessions | Unrestricted browsing, challenge bypass, cross-task session sharing, production browser hosting |
-| Agent operations | Nine role prompts, durable tasks, schedules, memory, approvals, audit events | Parallel subagents, plugins/MCP, multi-tenant SaaS, SSO |
+| Agent operations | Nine executable specialist roles, bounded child workers, durable messages and contexts, tasks, schedules, memory, approvals | Plugins/MCP, multi-tenant SaaS, SSO |
 
 Evidence for the included paths: [API checks](tests/test_app.py), [engine checks](tests/test_engine.py),
 [tool checks](tests/test_tools.py), and [provider contract checks](tests/test_provider.py).
@@ -167,3 +167,7 @@ See [configuration, budgets, capability limits, and acceptance evidence](docs/mo
 Use [the PostgreSQL deployment guide](docs/distributed-infrastructure.md) for independent control and worker containers, a database queue, private objects, lease recovery, and versioned migration. The original SQLite commands remain single-host only. Real service tests use scripted model answers; public production operation remains unverified.
 
 Browser setup, supported actions, network limits, and recovery: [Browser control](docs/browser-control.md).
+
+## Executable specialists
+
+[Specialist workers](docs/specialist-workers.md) adds bounded parallel delegation, private and shared context, durable messaging, priority, result collection, inherited permissions and cancellation. Real daemon restart acceptance uses scripted model responses; live provider completion remains unverified.

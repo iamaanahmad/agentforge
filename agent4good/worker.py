@@ -1,5 +1,6 @@
 """One worker per SQLite volume, or independent leased PostgreSQL workers."""
 
+from concurrent.futures import ThreadPoolExecutor
 import fcntl
 import logging
 import signal
@@ -51,6 +52,8 @@ def main(settings=None, provider=None):
     db.event(
         None, "worker_started", "Distributed worker online" if db.distributed else "SQLite worker online"
     )
+    pool = ThreadPoolExecutor(max_workers=settings.max_concurrent_runs, thread_name_prefix="specialist")
+    futures = set()
     try:
         while not stop.is_set():
             if db.distributed:
@@ -58,18 +61,25 @@ def main(settings=None, provider=None):
             engine.schedule_due()
             if stop.is_set():
                 break
-            task_id = engine.claim()
-            if task_id:
+            completed = {f for f in futures if f.done()}
+            for future in completed:
                 try:
-                    engine.run(task_id)
+                    future.result()
                 except Exception:
                     logging.error("Worker execution interrupted; recovery will inspect saved receipts")
+            futures -= completed
+            task_id = engine.claim() if len(futures) < settings.max_concurrent_runs else None
+            if task_id:
+                # Each run has a private engine, registry and provider context.
+                runner = Engine(db, settings, provider=provider)
+                futures.add(pool.submit(runner.run, task_id))
             else:
                 stop.wait(settings.worker_poll_seconds)
             # Retention for expired security records, not user artifacts.
             db.execute("DELETE FROM sessions WHERE expires<?", (time.time(),))
             db.execute("DELETE FROM rate_limits WHERE resets<?", (time.time(),))
     finally:
+        pool.shutdown(wait=True)
         heartbeat_stop.set()
         thread.join(timeout=6)
         if db.distributed:

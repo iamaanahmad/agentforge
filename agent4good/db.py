@@ -105,7 +105,10 @@ class Database:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS model_calls (id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), reserved_tokens INTEGER NOT NULL, reserved_micro_usd INTEGER NOT NULL, status TEXT NOT NULL, usage TEXT, created_at TEXT NOT NULL)"
             )
-            conn.execute("PRAGMA user_version=5")
+            from .coordination import initialize
+
+            initialize(conn)
+            conn.execute("PRAGMA user_version=6")
             for key, value in {"name": "Agent4Good", "goal": "", "autonomy": "supervised"}.items():
                 conn.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, value))
 

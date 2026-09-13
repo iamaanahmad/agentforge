@@ -4,7 +4,7 @@ Agent4Good is a single-owner service with SQLite or PostgreSQL persistence.
 The optional [distributed stack](distributed-infrastructure.md) separates control services, worker replicas, and object storage.
 
 - `app.py` authenticates the owner, serves the dashboard, and exposes JSON endpoints.
-- `worker.py` holds an OS file lock in SQLite mode or a PostgreSQL lease in distributed mode, recovers interrupted work, checks schedules, and claims one queued task at a time.
+- `worker.py` holds an OS file lock in SQLite mode or a PostgreSQL lease in distributed mode, recovers interrupted work, checks schedules, and claims queued tasks into a bounded runner pool. Child tasks share existing execution and policy contracts; see [specialist workers](specialist-workers.md).
 - `engine.py` runs the model/tool loop. Task context, pending calls, approvals, and tool receipts survive process restarts.
 - `provider.py` implements OpenAI Responses and Anthropic Messages at fixed endpoints. `model_router.py` pins owner-selected profiles and reserves call budgets durably. Neither accepts a model-selected API host.
 - `tools.py` owns typed tool contracts, discovery, adapters, approval enforcement, rate limits, and durable execution receipts.
@@ -36,7 +36,7 @@ Coding execution uses a separate offline Docker broker through a private Unix so
 
 ## Data and operations
 
-SQLite WAL storage must live on a local persistent disk shared by the two processes. Do not use NFS or run multiple hosts against this database. SQLite schema version 5 adds model routing and call budgets. Version 4 added versioned execution journals, plan steps, and attempt counters. Schema version 3 added a persistent tenant/environment binding, encrypted credentials, and webhook receipts. Existing owner data migrates in place.
+SQLite WAL storage must live on a local persistent disk shared by the two processes. Do not use NFS or run multiple hosts against this database. SQLite schema version 6 adds worker trees, messaging and context. Version 5 added model routing and call budgets. Version 4 added versioned execution journals, plan steps, and attempt counters. Schema version 3 added a persistent tenant/environment binding, encrypted credentials, and webhook receipts. Existing owner data migrates in place.
 
 Records remain until the owner archives or removes the deployment data through a maintenance procedure. There is no automatic retention purge. Vault credentials are encrypted; other workspace records remain plaintext. Encrypt disks and backups. Private task content may be sent to the selected model provider; `store=false` does not override that provider's contractual retention policies.
 

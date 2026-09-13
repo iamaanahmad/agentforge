@@ -14,7 +14,16 @@ def test_catalog_covers_categories_without_exposing_placeholders(settings):
     r, task = runnable(settings)
     rows = r.catalog()
     assert {row["category"] for row in rows} == set(CATEGORIES)
-    assert {t["name"] for t in r.definitions()} == {"memory_read", "memory_write", "artifact_write"}
+    assert {t["name"] for t in r.definitions()} == {
+        "memory_read",
+        "memory_write",
+        "artifact_write",
+        "worker_spawn",
+        "worker_message",
+        "worker_context",
+        "worker_results",
+        "worker_wait",
+    }
     assert next(row for row in rows if row["name"] == "send_email")["state"] == "unavailable"
     for row in rows:
         if row["state"] == "planned":

@@ -102,16 +102,20 @@ class ModelRouter:
             task = conn.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
             if task["status"] != "running":
                 raise ProviderError("cancelled", "Task is no longer running")
+            from .coordination import node
+
+            root = node(conn, task_id)["root_id"]
             used = conn.execute(
-                "SELECT COALESCE(SUM(reserved_tokens),0),COALESCE(SUM(reserved_micro_usd),0) FROM model_calls WHERE task_id=?",
-                (task_id,),
+                "SELECT COALESCE(SUM(reserved_tokens),0),COALESCE(SUM(reserved_micro_usd),0) FROM model_calls WHERE task_id IN (SELECT task_id FROM worker_nodes WHERE root_id=?)",
+                (root,),
             ).fetchone()
             if used[0] + tokens > self.settings.max_task_model_reserved_tokens:
                 raise ProviderError("budget", "Task model token reservation limit reached")
             if self.settings.max_task_model_cost_usd is not None:
                 # An old unpriced call could have incurred unknown cost. Fail closed.
                 if conn.execute(
-                    "SELECT 1 FROM model_calls WHERE task_id=? AND reserved_micro_usd=-1", (task_id,)
+                    "SELECT 1 FROM model_calls WHERE task_id IN (SELECT task_id FROM worker_nodes WHERE root_id=?) AND reserved_micro_usd=-1",
+                    (root,),
                 ).fetchone():
                     raise ProviderError(
                         "budget", "Existing model costs are unknown; start a new budgeted task"

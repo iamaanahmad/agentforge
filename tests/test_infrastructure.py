@@ -341,3 +341,64 @@ def test_real_worker_process_kill_recovery_and_drain(distributed, tmp_path):
                 process.kill()
                 process.wait(timeout=10)
         log.close()
+
+
+def test_distributed_child_workers_and_backup(distributed, tmp_path):
+    import threading
+    from test_workers import spawn, context
+    from agent4good.tools import ToolRegistry
+
+    settings, db = distributed
+    parent = task(db)
+    assert db.claim(settings) == parent
+    r = ToolRegistry(settings, db)
+    a, b = spawn(r, parent, "alpha", priority=-1), spawn(r, parent, "beta", priority=1)
+    db.execute("UPDATE tasks SET status='waiting_children' WHERE id=?", (parent,))
+    barrier = threading.Barrier(2)
+
+    class ConcurrentProvider:
+        def respond(self, *args):
+            barrier.wait(timeout=10)
+            return {"output": [], "output_text": "real PostgreSQL worker evidence", "usage": {}}
+
+    workers = [PostgresDatabase(settings), PostgresDatabase(settings)]
+    ids = [w.claim(settings) for w in workers]
+    assert ids == [b, a]
+    context(r, a, "private", "write", "0", "private child")
+    context(r, b, "shared", "write", "0", "shared tree")
+    r.execute(
+        "worker_message", {"recipient": parent, "content": "durable message"}, task_id=a, call_id="message"
+    )
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [
+            pool.submit(Engine(w, settings, ConcurrentProvider()).run, t) for w, t in zip(workers, ids)
+        ]
+        for future in futures:
+            future.result(timeout=20)
+    assert all(db.task(t)["status"] == "done" for t in ids)
+    assert db.claim(settings) == parent
+    result = r.execute("worker_results", {}, task_id=parent, call_id="collect")
+    assert len(result["data"]["children"]) == 2
+    backup_postgres(db, tmp_path / "tree.json")
+    document = json.loads((tmp_path / "tree.json").read_text())
+    assert len(document["tables"]["worker_context"]) == 2
+    assert len(document["tables"]["worker_nodes"]) == 3
+    # Restore the entire populated tree to a second real schema.
+    from psycopg.conninfo import make_conninfo
+
+    schema = "tree_restore_" + uuid4().hex
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(f"CREATE SCHEMA {schema}")
+    try:
+        target = PostgresDatabase(
+            settings.model_copy(
+                update={"database_url": make_conninfo(DSN, options=f"-c search_path={schema}")}
+            )
+        )
+        restore_postgres(target, tmp_path / "tree.json")
+        assert target.all("SELECT * FROM worker_messages") == db.all("SELECT * FROM worker_messages")
+        assert len(target.all("SELECT * FROM worker_context")) == 2
+        assert target.task(a)["result"] == db.task(a)["result"]
+    finally:
+        with psycopg.connect(DSN, autocommit=True) as conn:
+            conn.execute(f"DROP SCHEMA {schema} CASCADE")
