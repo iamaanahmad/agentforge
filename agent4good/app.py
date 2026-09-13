@@ -6,7 +6,6 @@ import json
 import re
 import secrets
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -294,11 +293,9 @@ def create_app(settings=None):
         return {"ok": True}
 
     def worker_status():
-        last = db.settings().get("worker_last_seen")
-        online = bool(
-            last and (datetime.now(timezone.utc) - datetime.fromisoformat(last)).total_seconds() < 30
-        )
-        return {"online": online, "last_seen": last}
+        from .developer import worker_readiness
+
+        return worker_readiness(db)
 
     @app.get("/api/overview", dependencies=[Depends(auth)])
     def overview():
@@ -800,6 +797,10 @@ def create_app(settings=None):
             media_type=media_type,
             headers={"Content-Disposition": f'attachment; filename="{name}"'},
         )
+
+    from .developer import install_api
+
+    install_api(app, db, registry, auth)
 
     app.mount("/static", StaticFiles(directory=static), name="static")
 

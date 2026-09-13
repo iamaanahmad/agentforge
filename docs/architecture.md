@@ -53,3 +53,7 @@ See [durable execution](durable-execution.md) for the exact recovery contract.
 The scheduler supports persisted one-time, daily recurring, deadline, event, and condition triggers alongside legacy intervals. Dependencies, priorities, finite occurrence budgets, cancellation, and atomic receipts apply before task dispatch. See [scheduling](scheduling.md) for time, overlap, migration, and agent-policy guarantees.
 
 See [runtime failure contracts](runtime-failures.md) for cross-component crash evidence and release gates.
+
+`developer.py` exposes the stable v1 owner API and read-only execution projection.
+`sdk.py`, `cli.py`, and `maintenance.py` provide installed developer and recovery interfaces.
+See [developer tools](developer-tools.md) for supported contracts and clean-install evidence.
