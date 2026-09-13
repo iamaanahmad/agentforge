@@ -647,3 +647,39 @@ def test_learning_postgres_reuse_correction_and_restore(distributed, tmp_path):
     finally:
         with psycopg.connect(DSN, autocommit=True) as conn:
             conn.execute(f"DROP SCHEMA {schema} CASCADE")
+
+
+def test_timeline_postgres_cursor_owner_and_restore(distributed, tmp_path):
+    from agent4good.timeline import read
+    from agent4good.tools import ToolRegistry
+
+    settings, db = distributed
+    ident = task(db)
+    engine = Engine(db, settings, provider=FinalProvider())
+    assert engine.claim() == ident
+    engine.run(ident)
+    credentials = ToolRegistry(settings, db).credentials
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        list(pool.map(lambda n: db.event(ident, "acceptance", str(n)), range(12)))
+    page = read(db, credentials, task_id=ident, limit=3)
+    collected = page["events"][:]
+    while page["has_more"]:
+        page = read(
+            db,
+            credentials,
+            task_id=ident,
+            limit=3,
+            after=page["next_cursor"],
+            through=page["through"],
+        )
+        collected.extend(page["events"])
+    ids = [event["id"] for event in collected]
+    assert ids == sorted(set(ids))
+    assert ids == [row["id"] for row in db.all("SELECT id FROM events WHERE task_id=? ORDER BY id", (ident,))]
+    assert page["tasks"][0]["result"] == "Verified scripted completion"
+    reopened = PostgresDatabase(settings)
+    assert read(reopened, credentials, task_id=ident, after=page["next_cursor"])["events"] == []
+    foreign = task(db)
+    db.execute("UPDATE tasks SET owner_id='other' WHERE id=?", (foreign,))
+    with pytest.raises(LookupError):
+        read(db, credentials, task_id=foreign)

@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .db import now
+from .timeline import emit
 
 
 @contextmanager
@@ -80,6 +81,15 @@ class ExecutionJournal:
                         "INSERT INTO plan_steps(task_id,action_id,action_key,fingerprint,tool,revision,depends_on) VALUES (?,?,?,?,?,?,?)",
                         (task_id, action_id, key, fingerprint, name, revision, previous),
                     )
+                    emit(
+                        conn,
+                        task_id,
+                        "plan_step",
+                        "Action added to plan",
+                        step_id=action_id,
+                        tool=name,
+                        revision=revision,
+                    )
                 call["action_id"] = action_id
                 previous = action_id
             conn.execute(
@@ -126,10 +136,25 @@ class ExecutionJournal:
                 raise RuntimeError("Plan dependency is incomplete")
 
     def observe(self, task_id, call, result, failed=False):
-        self.db.execute(
-            "UPDATE plan_steps SET status=?,observation=? WHERE task_id=? AND action_id=?",
-            ("observed_failure" if failed else "done", json.dumps(result), task_id, call["action_id"]),
-        )
+        with self.db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            prior = conn.execute(
+                "SELECT status FROM plan_steps WHERE task_id=? AND action_id=?", (task_id, call["action_id"])
+            ).fetchone()
+            conn.execute(
+                "UPDATE plan_steps SET status=?,observation=? WHERE task_id=? AND action_id=?",
+                ("observed_failure" if failed else "done", json.dumps(result), task_id, call["action_id"]),
+            )
+            if prior and prior["status"] not in {"done", "observed_failure"}:
+                emit(
+                    conn,
+                    task_id,
+                    "action_failed" if failed else "action_observed",
+                    "Action observation saved",
+                    step_id=call["action_id"],
+                    tool=call["name"],
+                    status="failed" if failed else "done",
+                )
 
     def finish(self, task_id, result):
         if not result.strip():
@@ -195,4 +220,10 @@ class ExecutionJournal:
                 )
                 + result,
             )
-        self.db.event(task_id, "completed", "Execution checks passed; review result and saved evidence")
+            emit(
+                conn,
+                task_id,
+                "completed",
+                "Execution checks passed; review result and saved evidence",
+                status="done",
+            )

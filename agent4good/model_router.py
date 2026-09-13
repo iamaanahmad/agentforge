@@ -3,6 +3,7 @@
 import json
 import math
 from .db import now, uid
+from .timeline import emit
 from .model_config import ModelProfile, WORK_TYPES, resolve_profile, task_work
 from .provider import ADAPTERS, ProviderError, check_cancelled
 
@@ -137,6 +138,14 @@ class ModelRouter:
                 "INSERT INTO model_calls VALUES (?,?,?,?,?,?,?)",
                 (call_id, task_id, tokens, cost, "reserved", None, now()),
             )
+            emit(
+                conn,
+                task_id,
+                "model_call_started",
+                "Model call reserved",
+                model_call_id=call_id,
+                status="reserved",
+            )
         return call_id
 
     def respond_task(self, task_id, instructions, items, tools, *, schema=None):
@@ -153,10 +162,28 @@ class ModelRouter:
         try:
             result = adapter.respond(instructions, items, tools, schema=schema, cancelled=cancelled)
         except Exception:
-            self.db.execute("UPDATE model_calls SET status='failed_or_unknown' WHERE id=?", (call_id,))
+            with self.db.connect() as conn:
+                conn.execute("UPDATE model_calls SET status='failed_or_unknown' WHERE id=?", (call_id,))
+                emit(
+                    conn,
+                    task_id,
+                    "model_call_failed",
+                    "Model call failed; usage may be unknown",
+                    model_call_id=call_id,
+                    status="failed_or_unknown",
+                )
             raise
-        self.db.execute(
-            "UPDATE model_calls SET status='completed',usage=? WHERE id=?",
-            (json.dumps(result["usage"]), call_id),
-        )
+        with self.db.connect() as conn:
+            conn.execute(
+                "UPDATE model_calls SET status='completed',usage=? WHERE id=?",
+                (json.dumps(result["usage"]), call_id),
+            )
+            emit(
+                conn,
+                task_id,
+                "model_call_completed",
+                "Model response saved",
+                model_call_id=call_id,
+                status="completed",
+            )
         return result

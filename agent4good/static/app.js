@@ -1,8 +1,8 @@
 'use strict';
 const $ = s => document.querySelector(s);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const names = {overview:'Overview',tasks:'Tasks',missions:'Missions',agents:'Your agents',approvals:'Decisions',memory:'Memory',schedules:'Schedules',integrations:'Connections',activity:'Activity',settings:'Settings'};
-const glyphs = ['◈','☷','◎','◉','◇','▤','◷','⌘','↗','⚙'];
+const names = {overview:'Overview',tasks:'Tasks',missions:'Missions',agents:'Your agents',approvals:'Decisions',memory:'Memory',schedules:'Schedules',integrations:'Connections',activity:'Activity',timeline:'Timeline',settings:'Settings'};
+const glyphs = ['◈','☷','◎','◉','◇','▤','◷','⌘','↗','≡','⚙'];
 let csrf = '', agents = [], current = 'overview', filter = 'all', toastTimer, detailId = null, rendering = false;
 const pretty = s => String(s).replaceAll('_',' ');
 const time = s => s ? new Date(s).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : 'Not yet';
@@ -20,7 +20,7 @@ const mutate = (path, body = {}, method = 'POST') => api(path, {method,body:JSON
 function showLogin() { csrf = ''; $('#workspace').hidden = true; $('#login').hidden = false; $('#modal').close(); }
 function heading(kicker, title, subtitle, action = '') { return `<div class="page-heading"><div><p class="eyebrow">${kicker}</p><h1>${title}</h1><p>${subtitle}</p></div>${action}</div>`; }
 function empty(title, text, action = '') { return `<div class="empty"><span class="empty-symbol" aria-hidden="true">◇</span><h3>${title}</h3><p>${text}</p>${action}</div>`; }
-function events(rows) { return rows.length ? rows.map(r => `<div class="event-row"><span class="event-dot"></span><div class="event-content"><strong>${escapeHTML(pretty(r.kind))}</strong><p>${escapeHTML(r.message)}</p></div><time>${time(r.created_at)}</time></div>`).join('') : empty('A fresh start.','Your operator’s work will leave a clear trail here.'); }
+function events(rows) { rows=rows.map(r=>{try{const p=JSON.parse(r.message);if(p.audit_version===1)return {...r,message:p.message};}catch{}return r;}); return rows.length ? rows.map(r => `<div class="event-row"><span class="event-dot"></span><div class="event-content"><strong>${escapeHTML(pretty(r.kind))}</strong><p>${escapeHTML(r.message)}</p></div><time>${time(r.created_at)}</time></div>`).join('') : empty('A fresh start.','Your operator’s work will leave a clear trail here.'); }
 function taskRows(rows) { return rows.length ? `<div class="table-wrap"><table class="task-table"><thead><tr><th>Task</th><th>Agent</th><th>Status</th><th class="hide-mobile">Created</th></tr></thead><tbody>${rows.map(t => `<tr><td><button class="text-link" data-task="${t.id}">${escapeHTML(t.title)}</button></td><td>${escapeHTML(agentName(t.agent))}</td><td>${badge(t.status)}</td><td class="hide-mobile">${time(t.created_at)}</td></tr>`).join('')}</tbody></table></div>` : empty('Give your first task a home.','Describe an outcome. Choose an agent. Keep track of what happens.', '<button class="secondary" data-action="new-task">Create a task</button>'); }
 function approvalCard(a) { return `<article class="approval-card"><div class="row-heading"><h3>${escapeHTML(pretty(a.tool))}</h3>${badge(a.status)}</div><p class="approval-meta">Exact action for your review · ${time(a.created_at)}</p><dl class="approval-args">${Object.entries(a.arguments).map(([k,v]) => `<dt>${escapeHTML(pretty(k))}</dt><dd><pre>${escapeHTML(v)}</pre></dd>`).join('')}</dl>${a.status === 'pending' ? `<p class="small muted">Approval resumes this task and permits these exact values. External actions may not be reversible.</p><div class="actions"><button class="primary" data-decision="${a.id}" data-value="approve">Approve this action</button><button class="danger" data-decision="${a.id}" data-value="reject">Reject and stop</button></div>` : ''}</article>`; }
 function modal(title, body) { $('#modal-content').innerHTML = `<div class="modal-heading"><h2>${title}</h2><button class="icon-button" data-action="close" aria-label="Close dialog">×</button></div>${body}`; if (!$('#modal').open) $('#modal').showModal(); }
@@ -60,14 +60,20 @@ async function render() {
       html = heading('CONNECTED CAPABILITIES','Good tools. Clear boundaries.','Credentials stay on your server. This page shows configuration, not a live connection test.') + `<section class="panel model-routes"><div class="panel-head"><h2>Models by work type</h2></div><div class="table-wrap"><table class="task-table"><thead><tr><th>Work</th><th>Provider / model</th><th>Availability</th></tr></thead><tbody>${Object.entries(readiness.model_routes).map(([work,r]) => `<tr><td>${escapeHTML(pretty(work))}</td><td>${escapeHTML(r.provider)} / ${escapeHTML(r.model)}</td><td>${escapeHTML(r.available ? (r.verification === 'live_call_recorded' ? 'Successful call recorded' : 'Configured, unverified') : r.reason)}</td></tr>`).join('')}</tbody></table></div></section><section class="panel integration-list">${rows.map(r => `<article class="integration"><span class="role-icon">${escapeHTML(r.name.slice(0,1))}</span><div><h2>${escapeHTML(r.name)}</h2><p>${escapeHTML(r.description)}</p></div>${badge(r.configured?'configured':'not_configured')}</article>`).join('')}</section><div class="notice"><h3>Know what this version can do</h3><p>Research, draft, manage memory, send approved emails, and propose GitHub changes. Browser automation, code execution, analytics providers, ad activation, and production deploys are not connected tools in this version.</p><p>Configure services in your server’s environment. Restart the web service and worker after changes.</p></div>`;
     } else if (route === 'missions') {
       html = await missionsPage();
+    } else if (route === 'timeline') {
+      html = await timelinePage();
     } else if (route === 'activity') {
       html = heading('THE RECORD','See what happened.','Task events show model steps, tool calls, decisions, and failures.') + `<section class="panel panel-body">${events(await api('events'))}</section>`;
     } else if (route === 'settings') {
       const p = overview.project;
       html = heading('WORKSPACE SETTINGS','Set the direction.','A clear goal and clear boundaries help your operator make useful progress.') + `<form id="settings-form" class="panel form-panel"><div class="field"><label for="project-name">Workspace name</label><input id="project-name" name="name" required maxlength="80" value="${escapeHTML(p.name)}"></div><div class="field"><label for="project-goal">Your goal</label><textarea id="project-goal" name="goal" rows="4" maxlength="4000" placeholder="Who do you help, and what result do you want?">${escapeHTML(p.goal)}</textarea></div><div class="field"><label for="autonomy">Autonomy</label><select id="autonomy" name="autonomy">${[['manual','Manual · approve every tool call'],['supervised','Supervised · start tasks yourself'],['autonomous','Autonomous · schedules can start tasks']].map(([v,l]) => `<option value="${v}" ${v===p.autonomy?'selected':''}>${l}</option>`).join('')}</select><p class="field-help">Every mode requires approval for email, GitHub writes, and agent changes to shared memory. Autonomous runs can incur model and search costs.</p></div><button class="primary" type="submit">Save settings</button></form>`;
     }
-    if (route === (names[location.hash.slice(1)] ? location.hash.slice(1) : 'overview')) $('#main').innerHTML = html;
-  } catch (e) { toast(e.message); } finally { rendering = false; }
+    if (route === (names[location.hash.slice(1)] ? location.hash.slice(1) : 'overview')) {
+      const opened=[...document.querySelectorAll('[data-timeline-open][open]')].map(el=>el.dataset.timelineOpen);
+      $('#main').innerHTML = html;
+      document.querySelectorAll('[data-timeline-open]').forEach(el=>{el.open=opened.includes(el.dataset.timelineOpen);});
+    }
+  } catch (e) { if($('#timeline-connection'))$('#timeline-connection').textContent='Disconnected · retrying in 5s'; toast(e.message); } finally { rendering = false; }
 }
 function newTask(agent = 'strategist') {
   detailId = null;
@@ -75,7 +81,7 @@ function newTask(agent = 'strategist') {
 }
 async function taskDetail(id) {
   const t = await api('tasks/' + id); detailId = id;
-  modal(escapeHTML(t.title), `<div class="detail-meta">${badge(t.status)}<span>${escapeHTML(agentName(t.agent))}</span><span>${t.steps} model steps</span></div><section class="detail-section"><h3>Instructions</h3><p class="result-text">${escapeHTML(t.prompt)}</p></section>${t.error?`<div class="notice error">${escapeHTML(t.error)}</div>`:''}${t.result?`<section class="detail-section"><h3>Result</h3><div class="result-text">${escapeHTML(t.result)}</div></section>`:''}${t.artifacts.length?`<section class="detail-section"><h3>Saved files</h3>${t.artifacts.map(a => `<a class="artifact-link" href="/api/artifacts/${a.id}" download>${escapeHTML(a.name)} ↓</a>`).join('')}</section>`:''}${t.approvals.filter(a => a.status==='pending').map(approvalCard).join('')}<section class="detail-section"><h3>Activity</h3>${events(t.events)}</section><div class="actions">${t.status==='draft'?`<button class="primary" data-run="${id}">Start task</button>`:''}${['draft','queued','running','waiting_children','waiting_approval'].includes(t.status)?`<button class="danger" data-cancel="${id}">Stop task</button>`:''}<button class="secondary" data-refresh="${id}">Refresh</button></div>`);
+  modal(escapeHTML(t.title), `<div class="detail-meta">${badge(t.status)}<span>${escapeHTML(agentName(t.agent))}</span><span>${t.steps} model steps</span></div><section class="detail-section"><h3>Instructions</h3><p class="result-text">${escapeHTML(t.prompt)}</p></section>${t.error?`<div class="notice error">${escapeHTML(t.error)}</div>`:''}${t.result?`<section class="detail-section"><h3>Result</h3><div class="result-text">${escapeHTML(t.result)}</div></section>`:''}${t.artifacts.length?`<section class="detail-section"><h3>Saved files</h3>${t.artifacts.map(a => `<a class="artifact-link" href="/api/artifacts/${a.id}" download>${escapeHTML(a.name)} ↓</a>`).join('')}</section>`:''}${t.approvals.filter(a => a.status==='pending').map(approvalCard).join('')}<section class="detail-section"><h3>Activity</h3><button class="text-link" data-timeline="${escapeHTML(id)}">Open full timeline ↗</button>${events(t.events)}</section><div class="actions">${t.status==='draft'?`<button class="primary" data-run="${id}">Start task</button>`:''}${['draft','queued','running','waiting_children','waiting_approval'].includes(t.status)?`<button class="danger" data-cancel="${id}">Stop task</button>`:''}<button class="secondary" data-refresh="${id}">Refresh</button></div>`);
 }
 async function noteForm(key = '') {
   detailId = null; const rows = key ? await api('memory') : [];
@@ -149,7 +155,7 @@ window.addEventListener('hashchange', () => { $('#sidebar').classList.remove('op
 $('#modal').addEventListener('close', () => { detailId=null; });
 async function enter() { agents=await api('agents'); $('#login').hidden=true; $('#workspace').hidden=false; await render(); }
 (async () => { try { csrf=(await api('session')).csrf_token; await enter(); } catch { showLogin(); } })();
-setInterval(() => { if(csrf && !$('#modal').open && !document.activeElement.closest('form') && current!=='settings' && !document.hidden) render(); }, 5000);
+setInterval(() => { if(csrf && !$('#modal').open && !document.activeElement.closest('form,select') && current!=='settings' && !document.hidden) render(); }, 5000);
 
 async function missionsPage() {
   const rows = await api('missions');
@@ -167,3 +173,63 @@ async function missionDetail(id) {
   const actions = m.status==='draft'?['start']:m.status==='running'?['pause']:m.status==='paused'?['resume','replan']:m.status==='needs_evidence'?['verify','replan']:[];
   modal(escapeHTML(spec.title), `<div class="detail-meta">${badge(m.status)}<span>Due ${time(spec.deadline)}</span><span>Plan ${m.revision}</span></div><p class="result-text">${escapeHTML(spec.objective)}</p><section class="detail-section"><h3>Success criteria</h3>${m.verification.map(c=>`<div class="mission-criterion"><div class="row-heading"><span>${escapeHTML(c.description)}</span>${badge(c.met?'met':'unmet')}</div>${c.evidence.length?`<p class="small result-text">${c.evidence.map(escapeHTML).join('\n')}</p>`:''}${!closed&&spec.criteria.find(v=>v.id===c.id).kind==='owner'?`<details><summary>Record your review</summary><form class="mission-review" data-id="${escapeHTML(id)}" data-criterion="${escapeHTML(c.id)}"><label>Evidence<textarea name="evidence" required rows="2" maxlength="4000"></textarea></label><label>Result<select name="accepted"><option value="true">Criterion met</option><option value="false">Criterion unmet</option></select></label><button class="secondary" type="submit">Save review</button></form></details>`:''}</div>`).join('')}</section><section class="detail-section"><h3>Work plan</h3>${m.steps.length?m.steps.map(s=>`<div class="mission-step"><div class="row-heading"><button class="text-button" data-task="${escapeHTML(s.id)}">${escapeHTML(s.title)}</button>${badge(s.status)}</div><p class="small muted">${escapeHTML(agentName(s.agent))} · Priority ${s.priority}${s.dependencies.length?' · After '+s.dependencies.map(escapeHTML).join(', '):''}</p>${s.error?`<p class="small">${escapeHTML(s.error)}</p>`:''}</div>`).join(''):'<p class="muted">Start the mission to create its plan.</p>'}</section><details class="mission-limits"><summary>Limits and permissions</summary><p class="result-text">${escapeHTML(spec.constraints||'No added planning constraints.')}</p><p>${Object.entries(m.usage).map(([k,v])=>`${escapeHTML(pretty(k))}: ${v} / ${spec.budget[k]??'uncapped'}`).join(' · ')}</p><p>Agents: ${spec.agents.map(a=>escapeHTML(agentName(a))).join(', ')}</p><p>Tools: ${spec.tools.map(escapeHTML).join(', ')||'None'}</p><p>External changes: ${spec.writes?'allowed with required approvals':'blocked'}</p></details><div class="actions">${actions.map((a,i)=>`<button class="${i?'secondary':'primary'}" data-mission-control="${escapeHTML(id)}" data-control="${a}">${{start:'Start mission',pause:'Pause mission',resume:'Resume mission',replan:'Revise plan',verify:'Check completion'}[a]}</button>`).join('')}${!closed?`<button class="danger" data-mission-control="${escapeHTML(id)}" data-control="cancel">Stop mission</button>`:''}<button class="secondary" data-mission="${escapeHTML(id)}">Refresh</button></div>`);
 }
+
+// The durable event ID is the cursor and render identity. Reconnects replay safely.
+let timelineState = {key:'', cursor:0, rows:new Map(), tasks:new Map(), more:false};
+let timelineTask = '', timelineAgent = '', timelineKind = '';
+function timelineQuery(after=0) {
+  const p=new URLSearchParams({after:String(after),limit:'100'});
+  if(timelineTask)p.set('task_id',timelineTask);
+  if(timelineAgent)p.set('agent',timelineAgent);
+  if(timelineKind)p.set('kind',timelineKind);
+  return p;
+}
+function usageText(u) {
+  const tokens=u.reported_tokens===null?'Tokens unavailable':`${u.reported_tokens.toLocaleString()} tokens (${pretty(u.tokens_label)})`;
+  const cost=u.estimated_model_usd===null?'Model cost unavailable':`Estimated model cost $${u.estimated_model_usd.toFixed(6)}`;
+  return `${tokens} · ${cost}`;
+}
+async function timelinePage() {
+  const key=[timelineTask,timelineAgent,timelineKind].join('|');
+  if(key!==timelineState.key)timelineState={key,cursor:0,rows:new Map(),tasks:new Map(),more:false};
+  const state=timelineState;
+  const data=await api('timeline?'+timelineQuery(state.cursor));
+  if(state!==timelineState)return '';
+  for(const e of data.events)state.rows.set(e.id,e);
+  for(const t of data.tasks)state.tasks.set(t.id,t);
+  state.cursor=data.next_cursor; state.more=data.has_more;
+  const choices=await api('tasks');
+  const selected=timelineTask?state.tasks.get(timelineTask):null;
+  const team=[...state.tasks.values()];
+  const rows=[...state.rows.values()].sort((a,b)=>a.id-b.id);
+  const kinds=['created','started','plan_step','action_observed','approval_requested','approved','rejected','model_call_started','model_call_completed','model_call_failed','model_retry','tool_failed','failed','completed','worker_spawned'];
+  return heading('EXECUTION','Follow the work.','Goals, agents, decisions, and saved evidence.', '<button class="secondary" data-action="export-timeline">Export record ↓</button>')+
+    `<div class="timeline-filters"><label>Task and child agents<select id="timeline-task"><option value="">All tasks</option>${choices.filter(t=>!t.parent_id).map(t=>`<option value="${escapeHTML(t.id)}" ${timelineTask===t.id?'selected':''}>${escapeHTML(t.title)}</option>`).join('')}</select></label><label>Agent<select id="timeline-agent"><option value="">All agents</option>${agents.map(a=>`<option value="${a.id}" ${timelineAgent===a.id?'selected':''}>${escapeHTML(a.name)}</option>`).join('')}</select></label><label>Event<select id="timeline-kind"><option value="">All events</option>${[...new Set([...kinds,...rows.map(e=>e.kind)])].sort().map(k=>`<option ${timelineKind===k?'selected':''} value="${escapeHTML(k)}">${escapeHTML(pretty(k))}</option>`).join('')}</select></label></div>`+
+    (selected?`<section class="panel panel-body timeline-goal"><div class="row-heading"><h2>${escapeHTML(selected.title)}</h2>${badge(selected.status)}</div><p class="result-text">${escapeHTML(selected.mission_goal||selected.goal)}</p><p class="muted">${team.filter(t=>['running','waiting_children','waiting_approval','queued'].includes(t.status)).length} active or waiting agents · ${selected.duration_seconds===null?'Not started':selected.duration_seconds+'s elapsed'}</p><div class="timeline-team">${team.map(t=>`<details data-timeline-open="${escapeHTML(t.id)}"><summary>${escapeHTML(agentName(t.agent))} · ${escapeHTML(t.title)} · ${escapeHTML(pretty(t.status))}</summary><p>${escapeHTML(t.provider||'Provider unavailable')} / ${escapeHTML(t.model||'Model unavailable')}</p><p>${escapeHTML(usageText(t.usage))}</p><p class="small muted">Actual billing and tool costs unavailable. Reservations are limits, not usage.</p>${t.plan.length?`<h3>Saved plan</h3><ol>${t.plan.map(p=>`<li>${escapeHTML(pretty(p.tool))} · ${escapeHTML(pretty(p.status))}<small class="audit-id">${escapeHTML(p.action_id)}${p.depends_on?' · after '+escapeHTML(p.depends_on):''}</small></li>`).join('')}</ol>`:''}${t.approvals.length?`<h3>Decisions</h3>${t.approvals.map(a=>`<p>${escapeHTML(pretty(a.tool))} · ${escapeHTML(a.status)}<small class="audit-id">${escapeHTML(a.id)} · action ${escapeHTML(a.call_id)}</small></p>`).join('')}` : ''}${t.result?`<h3>Result</h3><p class="result-text">${escapeHTML(t.result)}</p>`:''}${t.error?`<p class="notice error">${escapeHTML(t.error)}</p>`:''}${t.execution?.verification?`<h3>Verification</h3><p class="result-text">${escapeHTML(t.execution.verification)}</p>`:''}${t.artifacts.map(a=>`<a class="artifact-link" href="/api/artifacts/${encodeURIComponent(a.id)}" download>${escapeHTML(a.name)} ↓</a>`).join('')}</details>`).join('')}</div></section>`:'')+
+    `<section class="panel panel-body"><div class="panel-head"><h2>Execution timeline</h2><span class="small muted" id="timeline-connection" role="status">${state.more?'More saved events below':'Connected · checks every 5s'}</span></div>${rows.length?`<ol class="execution-events">${rows.map(e=>`<li data-event-id="${e.id}"><span class="event-dot"></span><div><div class="row-heading"><strong>${escapeHTML(pretty(e.kind))}</strong><time>${time(e.created_at)}</time></div><p>${escapeHTML(e.message)}</p><small>${escapeHTML(e.agent?agentName(e.agent):'Workspace')}${state.tasks.get(e.task_id)?' · '+escapeHTML(state.tasks.get(e.task_id).title):''}</small><details data-timeline-open="event-${e.id}"><summary>Record #${e.id}</summary><dl>${Object.entries(e).filter(([k,v])=>!['message','kind','created_at'].includes(k)&&v!==null).map(([k,v])=>`<dt>${escapeHTML(pretty(k))}</dt><dd>${escapeHTML(v)}</dd>`).join('')}</dl></details></div></li>`).join('')}</ol>`:empty('No events in this view.','Choose another filter or start a task.')}<div class="actions">${state.more?'<button class="secondary" data-action="more-timeline">Load more events</button>':''}<span class="small muted">Saved order · timestamps use your browser time</span></div></section>`;
+}
+document.addEventListener('change', async event=>{
+  if(!event.target.id.startsWith('timeline-'))return;
+  timelineTask=$('#timeline-task').value; timelineAgent=$('#timeline-agent').value; timelineKind=$('#timeline-kind').value;
+  await render();
+});
+document.addEventListener('click',async event=>{
+  const button=event.target.closest('button'); if(!button)return;
+  if(button.dataset.timeline){timelineTask=button.dataset.timeline;timelineAgent='';timelineKind='';$('#modal').close();location.hash='timeline';await render();}
+  if(button.dataset.action==='more-timeline')await render();
+  if(button.dataset.action==='export-timeline') {
+    button.disabled=true;
+    try {
+      const query=timelineQuery(0), record={version:1,events:[],tasks:[]}, tasks=new Map();
+      let data;
+      do {
+        data=await api('timeline?'+query);
+        if(!query.has('through')){query.set('through',data.through);record.through=data.through;record.captured_at=data.captured_at;}
+        record.events.push(...data.events);data.tasks.forEach(t=>tasks.set(t.id,t));query.set('after',data.next_cursor);
+      } while(data.has_more);
+      record.tasks=[...tasks.values()];record.note='Events are fixed through the watermark. Task details are snapshots during export. Costs are estimates or unavailable.';
+      const url=URL.createObjectURL(new Blob([JSON.stringify(record,null,2)],{type:'application/json'}));
+      const a=document.createElement('a');a.href=url;a.download='agent4good-timeline.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }catch(e){toast(e.message);}finally{button.disabled=false;}
+  }
+});

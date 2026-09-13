@@ -1290,9 +1290,16 @@ class ToolRegistry:
                 "ON CONFLICT(task_id,call_id) DO UPDATE SET attempts=excluded.attempts",
                 (task_id, call_id, name, args_json, attempts + 1),
             )
-            conn.execute(
-                "INSERT INTO events(task_id,kind,message,created_at) VALUES (?,?,?,?)",
-                (task_id, "tool_started", name, now()),
+            from .timeline import emit
+
+            emit(
+                conn,
+                task_id,
+                "tool_retry" if attempts else "tool_started",
+                "Tool invocation started",
+                step_id=call_id,
+                tool=name,
+                status="started",
             )
         action_token = ACTION_ID.set(hashlib.sha256((task_id + ":" + call_id).encode()).hexdigest())
         token = DEADLINE.set(time.monotonic() + spec.timeout_seconds)

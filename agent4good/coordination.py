@@ -100,10 +100,9 @@ def dispatch(conn, db, settings, task_id, name, args):
             "INSERT INTO worker_nodes VALUES (?,?,?,?,?,?)",
             (child, task_id, own["root_id"], own["depth"] + 1, priority, json.dumps(permissions)),
         )
-        conn.execute(
-            "INSERT INTO events(task_id,kind,message,created_at) VALUES (?,?,?,?)",
-            (task_id, "delegated", json.dumps({"child": child, "reason": request["reason"]}), now()),
-        )
+        from .timeline import emit
+
+        emit(conn, task_id, "delegated", "Child agent queued", child_id=child, status="queued")
         return {"data": {"child_id": child}}
     if name == "worker_message":
         recipient = args["recipient"]
