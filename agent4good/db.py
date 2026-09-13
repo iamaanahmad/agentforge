@@ -114,7 +114,10 @@ class Database:
             from .missions import initialize as initialize_missions
 
             initialize_missions(conn)
-            conn.execute("PRAGMA user_version=8")
+            from .scheduling import initialize as initialize_scheduling
+
+            initialize_scheduling(conn)
+            conn.execute("PRAGMA user_version=9")
             for key, value in {"name": "Agent4Good", "goal": "", "autonomy": "supervised"}.items():
                 conn.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, value))
 

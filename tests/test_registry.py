@@ -25,6 +25,8 @@ def test_catalog_covers_categories_without_exposing_placeholders(settings):
         "worker_context",
         "worker_results",
         "worker_wait",
+        "schedule_create",
+        "schedule_cancel",
     }
     assert next(row for row in rows if row["name"] == "send_email")["state"] == "unavailable"
     for row in rows:

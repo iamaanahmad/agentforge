@@ -166,7 +166,7 @@ def test_scheduler_coalesces_and_obeys_mode(settings):
     assert len(db.all("SELECT * FROM tasks")) == 1
     assert db.all("SELECT * FROM tasks")[0]["status"] == "draft"
     db.execute("UPDATE settings SET value='autonomous' WHERE key='autonomy'")
-    db.execute("UPDATE schedules SET next_run_at='2020-01-01T00:00:00+00:00'")
+    db.execute("UPDATE schedules SET next_run_at='2020-01-02T00:00:00+00:00'")
     e.schedule_due()
     assert len(db.all("SELECT * FROM tasks WHERE status='queued'")) == 1
 
