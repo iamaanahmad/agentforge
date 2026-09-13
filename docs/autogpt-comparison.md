@@ -11,7 +11,7 @@ Sources checked September 13, 2026. Competitor scope is documented, not independ
 | Page claim | Evidence |
 |---|---|
 | Owner workspace and setup | README.md, What works and Run locally; agent4good/app.py |
-| Specialist execution | docs/specialist-workers.md and tests/test_specialist_workers.py |
+| Specialist execution | docs/specialist-workers.md and tests/test_workers.py |
 | Exact approvals | docs/action-policies.md and README.md |
 | Recovery | docs/durable-execution.md, tests/test_release_acceptance.py |
 | Four configured adapters | README.md, Capability boundaries and What works |
