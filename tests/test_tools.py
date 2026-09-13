@@ -1,8 +1,25 @@
 import socket
+from agent4good.tools import ToolRegistry, ToolError, public_addresses, validate_arguments
 import pytest
 from pydantic import ValidationError
 from agent4good.config import Settings
-from agent4good.tools import ToolRegistry, ToolError, public_addresses, validate_arguments
+from agent4good.db import Database, now
+import json
+
+
+def runnable(settings):
+    db = Database(settings.data_dir / "tools.sqlite3")
+    task = db.create_task("Tagged test", "Adapter check", "strategist", True)
+    db.execute("UPDATE tasks SET status='running' WHERE id=?", (task,))
+    return ToolRegistry(settings, db), task
+
+
+def permit(r, task, name, args, call_id="check"):
+    r.db.execute(
+        "INSERT INTO approvals(id,task_id,call_id,tool,arguments,status,created_at) "
+        "VALUES (?,?,?,?,?,'approved',?)",
+        (task + call_id, task, call_id, name, json.dumps(args), now()),
+    )
 
 
 def test_settings_refuse_unsafe_defaults():
@@ -45,9 +62,9 @@ def test_dns_mixed_public_private_rejected(monkeypatch):
 )
 def test_url_policy_before_network(settings, url):
     settings.allowed_read_hosts = ["example.com"]
-    r = ToolRegistry(settings)
+    r, task = runnable(settings)
     with pytest.raises(ToolError):
-        r.execute("web_fetch", {"url": url})
+        r.execute("web_fetch", {"url": url}, task_id=task, call_id="check")
 
 
 @pytest.mark.parametrize(
@@ -96,11 +113,12 @@ def test_no_credentials_means_no_external_tools(settings):
 def test_email_exact_payload(settings, monkeypatch):
     settings.resend_api_key = "test-key"
     settings.mail_from = "Owner <owner@example.com>"
-    r = ToolRegistry(settings)
+    r, task = runnable(settings)
     requests = []
     monkeypatch.setattr(r, "_request", lambda *args: requests.append(args) or {"id": "receipt"})
     args = {"to": "person@example.com", "subject": "Subject", "body": "Exact body\nWith newline"}
-    assert r.execute("send_email", args) == {"message_id": "receipt"}
+    permit(r, task, "send_email", args)
+    assert r.execute("send_email", args, task_id=task, call_id="check") == {"message_id": "receipt"}
     assert requests[0][3] == {
         "from": settings.mail_from,
         "to": [args["to"]],
@@ -114,10 +132,14 @@ def test_email_exact_payload(settings, monkeypatch):
 def test_default_branch_write_fails_even_if_prefixed(settings, monkeypatch):
     settings.github_token = "test-key"
     settings.github_repo = "owner/repo"
-    r = ToolRegistry(settings)
+    r, task = runnable(settings)
+    args = {"branch": "agent4good/main", "path": "README.md", "content": "x", "message": "x", "sha": ""}
+    permit(r, task, "github_write_file", args)
     monkeypatch.setattr(r, "_github", lambda *args: {"default_branch": "agent4good/main"})
     with pytest.raises(ToolError):
         r.execute(
             "github_write_file",
-            {"branch": "agent4good/main", "path": "README.md", "content": "x", "message": "x", "sha": ""},
+            args,
+            task_id=task,
+            call_id="check",
         )

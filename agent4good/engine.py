@@ -1,11 +1,10 @@
 import json
-import re
 from datetime import datetime, timedelta, timezone
 
 from .catalog import agent_prompt
 from .db import now, uid
 from .provider import ResponsesProvider
-from .tools import INTERNAL_TOOLS, ToolRegistry, validate_arguments
+from .tools import ToolRegistry, validate_arguments
 
 SYSTEM = """
 You are an accountable AI growth and product operator for one owner.
@@ -26,7 +25,7 @@ class Engine:
     def __init__(self, db, settings, provider=None, registry=None):
         self.db, self.settings = db, settings
         self.provider = provider or ResponsesProvider(settings)
-        self.registry = registry or ToolRegistry(settings)
+        self.registry = registry or ToolRegistry(settings, db)
 
     def claim(self):
         with self.db.connect() as conn:
@@ -134,36 +133,8 @@ class Engine:
                         or approval["tool"] != name
                     ):
                         raise RuntimeError("Approval does not match this exact action")
-                # Record intent first. A process crash must never automatically replay this call.
-                if not self._active(task_id):
-                    return
-                args_json = json.dumps(args, sort_keys=True)
-                receipt = self.db.one(
-                    "SELECT * FROM tool_runs WHERE task_id=? AND call_id=?", (task_id, call["call_id"])
-                )
-                if receipt:
-                    if (
-                        receipt["status"] != "done"
-                        or receipt["tool"] != name
-                        or receipt["arguments"] != args_json
-                    ):
-                        raise RuntimeError(
-                            "Ambiguous or mismatched tool call. Inspect the external service before retrying."
-                        )
-                    result_json = receipt["result"]
-                else:
-                    self.db.execute(
-                        "INSERT INTO tool_runs(task_id,call_id,tool,arguments,status) VALUES (?,?,?,?, 'started')",
-                        (task_id, call["call_id"], name, args_json),
-                    )
-                    self.db.event(task_id, "tool_started", name)
-                    result = self._execute(task_id, name, args)
-                    result_json = self._redact(json.dumps(result))
-                    self.db.execute(
-                        "UPDATE tool_runs SET status='done',result=? WHERE task_id=? AND call_id=?",
-                        (result_json, task_id, call["call_id"]),
-                    )
-                    self.db.event(task_id, "tool_completed", name)
+                result = self.registry.execute(name, args, task_id=task_id, call_id=call["call_id"])
+                result_json = json.dumps(result)
                 items.append(
                     {
                         "type": "function_call_output",
@@ -189,9 +160,7 @@ class Engine:
                 "UPDATE tasks SET steps=steps+1,updated_at=? WHERE id=? AND status='running'",
                 (now(), task_id),
             )
-            response = self.provider.respond(
-                instructions, items, INTERNAL_TOOLS + self.registry.definitions()
-            )
+            response = self.provider.respond(instructions, items, self.registry.definitions())
             if not self._active(task_id):
                 return
             output = response["output"]
@@ -234,30 +203,6 @@ class Engine:
             if secret:
                 text = text.replace(secret, "[redacted]")
         return text
-
-    def _execute(self, task_id, name, args):
-        if name in {"memory_read", "memory_write"}:
-            if not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", args["key"]):
-                raise ValueError("Memory keys use letters, numbers, underscores and hyphens")
-            if name == "memory_read":
-                return self.db.one("SELECT * FROM memory WHERE key=?", (args["key"],)) or {"found": False}
-            if len(args["content"]) > 20000:
-                raise ValueError("Memory note exceeds 20000 characters")
-            self.db.execute(
-                "INSERT INTO memory VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET content=excluded.content,updated_at=excluded.updated_at",
-                (args["key"], self._redact(args["content"]), now()),
-            )
-            return {"saved": args["key"]}
-        if name == "artifact_write":
-            if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}", args["name"]):
-                raise ValueError("Artifact name must be a simple filename")
-            artifact_id = uid("artifact")
-            self.db.execute(
-                "INSERT INTO artifacts VALUES (?,?,?,?,?)",
-                (artifact_id, task_id, args["name"], self._redact(args["content"]), now()),
-            )
-            return {"id": artifact_id, "name": args["name"], "download": f"/api/artifacts/{artifact_id}"}
-        return self.registry.execute(name, args)
 
     def schedule_due(self):
         ts = now()

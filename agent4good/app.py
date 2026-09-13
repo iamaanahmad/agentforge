@@ -58,7 +58,7 @@ class SchedulePatch(BaseModel):
 def create_app(settings=None):
     settings = settings or Settings()
     db = Database(settings.data_dir / "agent4good.sqlite3")
-    registry = ToolRegistry(settings)
+    registry = ToolRegistry(settings, db)
     app = FastAPI(title="Agent4Good", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.db, app.state.settings = db, settings
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
@@ -351,6 +351,10 @@ def create_app(settings=None):
     @app.get("/api/integrations", dependencies=[Depends(auth)])
     def integrations():
         return registry.integrations()
+
+    @app.get("/api/tools", dependencies=[Depends(auth)])
+    def tools_catalog():
+        return registry.catalog()
 
     @app.get("/api/settings", dependencies=[Depends(auth)])
     def project():
