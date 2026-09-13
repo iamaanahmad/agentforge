@@ -37,7 +37,7 @@ Restore procedure:
 2. Validate the backup with SQLite `PRAGMA integrity_check`.
 3. Replace `agent4good.sqlite3` with the backup. Remove old `-wal` and `-shm` files only while both services are stopped.
 4. Preserve ownership for UID/GID 10001. Rotate `A4G_SESSION_SECRET` to invalidate restored sessions.
-5. Start both services. Inspect interrupted tasks and external provider receipts before creating replacement work.
+5. Start both services. Safe interrupted tasks resume. Inspect failed ambiguous writes and provider receipts before creating replacement work.
 
 ## Recovery and updates
 
@@ -60,7 +60,7 @@ The repository's tests and container CI prove local code paths, not your live pr
 Run `uv run pytest -q tests/test_release_acceptance.py` before releasing changes.
 This invokes the backup command against tagged test data and restores into a separate temporary directory.
 It checks owner authentication, exact saved approval, artifact retrieval, and completed receipts after restart.
-It also checks that interrupted work stays failed and existing backup files cannot be overwritten.
+It also checks that ambiguous writes stay failed and existing backup files cannot be overwritten.
 Pytest uses disposable data; no external message is sent and no provider key is inherited by the backup process.
 
 This is application integration evidence with scripted model responses, not a live deployment test.

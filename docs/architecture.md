@@ -17,9 +17,9 @@ Agent4Good is a single-owner service with two processes and one persistent SQLit
 
 An approval moves `waiting_approval → queued`. Rejection or owner cancellation moves active work to `cancelled`. Closed tasks cannot restart. Create a new task after inspecting the earlier result.
 
-A tool call receives a persistent `started` receipt before execution and a `done` receipt after a response. A repeated completed call ID reuses the receipt. A repeated incomplete call refuses execution. This prevents automatic replay; it does not promise distributed exactly-once delivery when a provider accepts a request but its response is lost.
+A tool call receives a persistent `started` receipt before execution and a `done` receipt after a response. A completed action reuses its receipt, including matching writes with new model call IDs. Incomplete writes refuse execution. Bounded read retries can obtain a fresh observation. This prevents automatic replay; it does not promise distributed exactly-once delivery when a provider accepts a request but its response is lost.
 
-Recovery marks interrupted `running` tasks failed. Waiting approvals remain available. Schedules coalesce missed intervals into one task and advance from the current time. They do not replay every missed interval. The worker must be online; this service does not execute while the host is stopped.
+Recovery requeues safe interrupted `running` tasks from saved checkpoints. Ambiguous writes and exhausted recovery budgets fail for inspection. Waiting approvals remain available. Schedules coalesce missed intervals into one task and advance from the current time. They do not replay every missed interval. The worker must be online; this service does not execute while the host is stopped.
 
 ## Adding a capability
 
@@ -35,7 +35,7 @@ Future browser or code-execution support needs a separate sandbox with resource 
 
 ## Data and operations
 
-SQLite WAL storage must live on a local persistent disk shared by the two processes. Do not use NFS or run multiple hosts against this database. Schema version 3 adds a persistent tenant/environment binding, encrypted credentials, and webhook receipts. Existing owner data migrates in place.
+SQLite WAL storage must live on a local persistent disk shared by the two processes. Do not use NFS or run multiple hosts against this database. Schema version 4 adds versioned execution journals, plan steps, and attempt counters. Schema version 3 added a persistent tenant/environment binding, encrypted credentials, and webhook receipts. Existing owner data migrates in place.
 
 Records remain until the owner archives or removes the deployment data through a maintenance procedure. There is no automatic retention purge. Vault credentials are encrypted; other workspace records remain plaintext. Encrypt disks and backups. Private task content may be sent to the selected model provider; `store=false` does not override that provider's contractual retention policies.
 
@@ -43,3 +43,6 @@ See [the registry contract](tool-registry.md) for the public execution interface
 
 `credentials.py` owns host-only credential storage and brokerage. `webhooks.py` verifies signed draft creation.
 See [security and migration](credential-security.md) before changing an existing deployment.
+
+`execution.py` checkpoints sequential plan revisions, dependencies, observations, and final execution checks.
+See [durable execution](durable-execution.md) for the exact recovery contract.

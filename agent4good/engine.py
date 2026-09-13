@@ -1,3 +1,5 @@
+from .execution import ExecutionJournal, task_lock
+import httpx
 from .credentials import TASK_CONTEXT
 import json
 from datetime import datetime, timedelta, timezone
@@ -5,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from .catalog import agent_prompt
 from .db import now
 from .provider import ResponsesProvider
-from .tools import SPECS, ToolRegistry, validate_arguments
+from .tools import SPECS, ToolRegistry, ToolError, validate_arguments
 
 SYSTEM = """
 You are an accountable AI growth and product operator for one owner.
@@ -25,6 +27,7 @@ Finish with a concise plain-language result, evidence, and any remaining limitat
 class Engine:
     def __init__(self, db, settings, provider=None, registry=None):
         self.db, self.settings = db, settings
+        self.journal = ExecutionJournal(db)
         self.registry = registry or ToolRegistry(settings, db)
         self.provider = provider or ResponsesProvider(settings, self.registry.credentials)
 
@@ -53,6 +56,11 @@ class Engine:
             return row["id"]
 
     def run(self, task_id):
+        with task_lock(self.db, task_id) as acquired:
+            if acquired:
+                self._guarded_run(task_id)
+
+    def _guarded_run(self, task_id):
         try:
             self._run(task_id)
         except Exception as exc:
@@ -78,15 +86,12 @@ class Engine:
         self.db.require_owner(task)
         return task["status"] == "running"
 
-    def _save(self, task_id, items, pending):
-        self.db.execute(
-            "UPDATE tasks SET items=?,pending=?,updated_at=? WHERE id=? AND status='running'",
-            (
-                json.dumps(self.registry.credentials.redact(items)),
-                json.dumps(self.registry.credentials.redact(pending)),
-                now(),
-                task_id,
-            ),
+    def _save(self, task_id, items, pending, final_text=None):
+        self.journal.checkpoint(
+            task_id,
+            self.registry.credentials.redact(items),
+            pending,
+            self._redact(final_text) if final_text is not None else None,
         )
 
     def _run(self, task_id):
@@ -96,9 +101,21 @@ class Engine:
         self.db.require_owner(task)
         items = json.loads(task["items"]) or [{"role": "user", "content": task["prompt"]}]
         pending = json.loads(task["pending"])
+        execution = self.db.one("SELECT * FROM executions WHERE task_id=?", (task_id,))
+        if execution and execution["version"] != 1:
+            raise RuntimeError("Unsupported execution version; upgrade before recovery")
+        if execution and execution["final_text"] is not None:
+            self.journal.finish(task_id, execution["final_text"])
+            return
+        self._save(task_id, items, pending)
         if len(json.dumps(items)) > 400000:
             raise RuntimeError("Context limit reached. Start a smaller task using the saved artifacts.")
         while self._active(task_id):
+            execution = self.db.one("SELECT * FROM executions WHERE task_id=?", (task_id,))
+            if (
+                datetime.now(timezone.utc) - datetime.fromisoformat(execution["started_at"])
+            ).total_seconds() > self.settings.task_timeout_seconds:
+                raise RuntimeError("Task deadline exceeded; saved actions remain available")
             if len(json.dumps(items)) > 400000:
                 raise RuntimeError("Context limit reached. Start a smaller task using saved artifacts.")
             if pending:
@@ -106,7 +123,8 @@ class Engine:
                 name = call["name"]
                 args = json.loads(call["arguments"])
                 validate_arguments(name, args)
-                disposition = self.registry.policy.prepare(task_id, call["call_id"], SPECS[name], args)
+                self.journal.before(task_id, call)
+                disposition = self.registry.policy.prepare(task_id, call["action_id"], SPECS[name], args)
                 if disposition == "deny":
                     raise RuntimeError("Action denied by policy")
                 if disposition != "allow":
@@ -114,7 +132,26 @@ class Engine:
                         task_id, "approval_requested", f"Owner decision required: {name} ({disposition})"
                     )
                     return
-                result = self.registry.execute(name, args, task_id=task_id, call_id=call["call_id"])
+                failed = False
+                try:
+                    result = self.registry.execute(name, args, task_id=task_id, call_id=call["action_id"])
+                except (httpx.TransportError, TimeoutError, ToolError):
+                    receipt = self.db.one(
+                        "SELECT status FROM tool_runs WHERE task_id=? AND call_id=?",
+                        (task_id, call["action_id"]),
+                    )
+                    if not receipt:
+                        raise
+                    if SPECS[name].action_class != "READ":
+                        raise RuntimeError(
+                            "Ambiguous external write; inspect receipt before retrying"
+                        ) from None
+                    result = {
+                        "error": "Read failed or timed out. Replan using another source or report the missing evidence."
+                    }
+                    failed = True
+                self.journal.observe(task_id, call, result, failed)
+
                 result_json = json.dumps(result)
                 items.append(
                     {
@@ -145,9 +182,24 @@ class Engine:
             try:
                 response = self.provider.respond(
                     self._redact(instructions),
-                    self.registry.credentials.redact(items),
+                    self.registry.credentials.redact(
+                        [{k: v for k, v in item.items() if k != "action_id"} for item in items]
+                    ),
                     self.registry.definitions(),
                 )
+            except (httpx.TransportError, TimeoutError):
+                self.db.execute(
+                    "UPDATE executions SET model_failures=model_failures+1 WHERE task_id=?", (task_id,)
+                )
+                failures = self.db.one("SELECT model_failures FROM executions WHERE task_id=?", (task_id,))[
+                    "model_failures"
+                ]
+                if failures > self.settings.max_model_retries:
+                    raise RuntimeError("Model retry limit reached") from None
+                self.db.event(
+                    task_id, "model_retry", "Model transport failed; retrying saved context within budget"
+                )
+                continue
             finally:
                 TASK_CONTEXT.reset(token)
             response = self.registry.credentials.redact(response)
@@ -160,7 +212,7 @@ class Engine:
             pending = [item for item in output if item.get("type") == "function_call"]
             if len(pending) > 10:
                 raise RuntimeError("Provider exceeded the per-response tool limit")
-            self._save(task_id, items, pending)
+            self._save(task_id, items, pending, response["output_text"] if not pending else None)
             usage = response.get("usage", {})
             self.db.event(
                 task_id,
@@ -171,14 +223,7 @@ class Engine:
                 result = self._redact(response["output_text"])
                 if not result.strip():
                     raise RuntimeError("Model returned no final result")
-                changed = self.db.execute(
-                    "UPDATE tasks SET status='done',result=?,updated_at=? WHERE id=? AND status='running'",
-                    (result, now(), task_id),
-                )
-                if changed:
-                    self.db.event(
-                        task_id, "completed", "Run completed; review the result and saved artifacts"
-                    )
+                self.journal.finish(task_id, result)
                 return
 
     def _redact(self, text):
@@ -201,17 +246,45 @@ class Engine:
                 conn.execute("UPDATE schedules SET next_run_at=? WHERE id=?", (next_at, row["id"]))
 
     def recover(self):
-        # Ambiguous external calls cannot safely be retried. Owner inspects receipts before a new run.
+        # The worker holds its volume lock. Per-task locks also fence direct callers.
         tasks = self.db.all("SELECT id FROM tasks WHERE status='running' AND owner_id='owner'")
         for task in tasks:
-            self.db.execute(
-                "UPDATE tasks SET status='failed',error=?,updated_at=? WHERE id=? AND status='running'",
-                (
-                    "Worker stopped during this run. Inspect activity and external services before retrying work.",
-                    now(),
-                    task["id"],
-                ),
-            )
-            self.db.event(
-                task["id"], "interrupted", "Interrupted run held for inspection; no automatic replay"
-            )
+            task_id = task["id"]
+            with task_lock(self.db, task_id) as acquired:
+                if not acquired:
+                    continue
+                with self.db.connect() as conn:
+                    conn.execute("BEGIN IMMEDIATE")
+                    execution = conn.execute(
+                        "SELECT * FROM executions WHERE task_id=?", (task_id,)
+                    ).fetchone()
+                    ambiguous = conn.execute(
+                        "SELECT tool FROM tool_runs WHERE task_id=? AND status!='done'", (task_id,)
+                    ).fetchall()
+                    unsafe = any(
+                        row["tool"] not in SPECS or SPECS[row["tool"]].action_class != "READ"
+                        for row in ambiguous
+                    )
+                    exhausted = execution and execution["recoveries"] >= self.settings.max_recoveries
+                    if unsafe or exhausted:
+                        status, message = (
+                            "failed",
+                            "Inspect incomplete receipts or exhausted recovery budget before retrying",
+                        )
+                    else:
+                        status, message = "queued", ""
+                        if execution:
+                            conn.execute(
+                                "UPDATE executions SET recoveries=recoveries+1 WHERE task_id=?", (task_id,)
+                            )
+                    conn.execute(
+                        "UPDATE tasks SET status=?,error=?,updated_at=? WHERE id=? AND status='running'",
+                        (status, message, now(), task_id),
+                    )
+                    conn.execute(
+                        "UPDATE executions SET phase=? WHERE task_id=?",
+                        ("inspection" if status == "failed" else "recovering", task_id),
+                    )
+                self.db.event(
+                    task_id, "recovery", "Saved execution queued" if status == "queued" else message
+                )

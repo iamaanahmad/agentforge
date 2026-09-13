@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     model: str = "gpt-5.4-mini"
     max_output_tokens: int = Field(4096, ge=256, le=16000)
     max_steps: int = Field(12, ge=1, le=30)
+    max_recoveries: int = Field(3, ge=0, le=20)
+    max_model_retries: int = Field(2, ge=0, le=5)
+    task_timeout_seconds: int = Field(3600, ge=60, le=86400)
     max_daily_runs: int = Field(30, ge=1, le=1000)
     github_token: str = Field("", repr=False, exclude=True)
     github_repo: str = ""

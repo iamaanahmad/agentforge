@@ -121,13 +121,12 @@ def test_manual_mode_requires_read_approval(settings):
     assert db.task(t)["status"] == "waiting_approval"
 
 
-def test_restart_never_replays_inflight_work(settings):
+def test_restart_requeues_work_without_external_intent(settings):
     p = FakeProvider()
     db, e, t = make(settings, p)
     e.recover()
-    assert db.task(t)["status"] == "failed"
-    assert e.claim() is None
-    assert "Inspect" in db.task(t)["error"]
+    assert db.task(t)["status"] == "queued"
+    assert e.claim() == t
     assert not p.calls
 
 

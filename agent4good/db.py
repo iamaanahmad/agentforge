@@ -58,6 +58,21 @@ class Database:
                 CREATE INDEX IF NOT EXISTS policy_usage_window ON policy_usage(bucket,created_at);
                 CREATE TABLE IF NOT EXISTS security_domain (id INTEGER PRIMARY KEY CHECK(id=1), tenant TEXT NOT NULL, environment TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS credentials (name TEXT PRIMARY KEY, key_id TEXT NOT NULL, nonce BLOB NOT NULL, ciphertext BLOB NOT NULL, metadata TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS executions (
+                    task_id TEXT PRIMARY KEY REFERENCES tasks(id), version INTEGER NOT NULL DEFAULT 1,
+                    revision INTEGER NOT NULL DEFAULT 0, phase TEXT NOT NULL DEFAULT 'executing',
+                    started_at TEXT NOT NULL, recoveries INTEGER NOT NULL DEFAULT 0,
+                    model_failures INTEGER NOT NULL DEFAULT 0, final_text TEXT, verification TEXT);
+                CREATE TABLE IF NOT EXISTS plan_steps (
+                    task_id TEXT NOT NULL REFERENCES tasks(id), action_id TEXT NOT NULL,
+                    action_key TEXT NOT NULL, fingerprint TEXT NOT NULL, tool TEXT NOT NULL,
+                    revision INTEGER NOT NULL, depends_on TEXT, status TEXT NOT NULL DEFAULT 'pending',
+                    observation TEXT, PRIMARY KEY(task_id,action_id), UNIQUE(task_id,action_key));
+                CREATE TRIGGER IF NOT EXISTS execution_task_phase AFTER UPDATE OF status ON tasks
+                WHEN NEW.status IN ('queued','waiting_approval','failed','cancelled')
+                BEGIN
+                    UPDATE executions SET phase=NEW.status WHERE task_id=NEW.id;
+                END;
                 CREATE TABLE IF NOT EXISTS webhook_receipts (delivery_id TEXT PRIMARY KEY, received REAL NOT NULL, task_id TEXT NOT NULL REFERENCES tasks(id));
 
             """)
@@ -67,7 +82,9 @@ class Database:
             if not conn.execute("SELECT 1 FROM action_policy").fetchone():
                 conn.execute("INSERT INTO action_policy VALUES (1,1,'{}')")
                 conn.execute("INSERT INTO policy_legacy SELECT id FROM approvals")
-            conn.execute("PRAGMA user_version=3")
+            if "attempts" not in {row["name"] for row in conn.execute("PRAGMA table_info(tool_runs)")}:
+                conn.execute("ALTER TABLE tool_runs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1")
+            conn.execute("PRAGMA user_version=4")
             for key, value in {"name": "Agent4Good", "goal": "", "autonomy": "supervised"}.items():
                 conn.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, value))
 
