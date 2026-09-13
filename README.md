@@ -29,7 +29,8 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 | Paid growth and creative | Campaign plans, copy and creative briefs | Ad activation, image/video generation, real budget management |
 | Browser work | Exact-approved isolated Chromium journeys, forms, file transfer, tabs, screenshots, encrypted task sessions | Unrestricted browsing, challenge bypass, cross-task session sharing, production browser hosting |
 | Memory | Private working snapshots, past-run episodes, sourced facts, bounded lexical retrieval, versioned corrections and quarantine | Embedding search, automatic document ingestion, multi-user memory |
-| Missions | Immutable objectives and criteria, bounded dependent plans, shared limits, revisions, pause/cancel, receipt and owner evidence checks | Independent critics, semantic outcome validation |
+| Missions | Immutable objectives and criteria, bounded dependent plans, shared limits, revisions, pause/cancel, receipt and owner evidence checks | Automatic mission-wide semantic acceptance |
+| Quality | Owner-defined executable checks, isolated critics, bounded builder revisions, separate verifiers, saved evidence | Visual critics, proof of arbitrary claims, live model quality evidence |
 | Scheduling | One-time, daily time-zone recurrence, deadline, event, and condition triggers; dependencies, priorities, atomic occurrence receipts | Cron expressions, arbitrary code or network conditions, hard completion deadlines |
 | Agent operations | Nine executable specialist roles, bounded child workers, durable messages and contexts, tasks, schedules, memory, approvals | Plugins/MCP, multi-tenant SaaS, SSO |
 
