@@ -68,6 +68,11 @@ class Database:
                     action_key TEXT NOT NULL, fingerprint TEXT NOT NULL, tool TEXT NOT NULL,
                     revision INTEGER NOT NULL, depends_on TEXT, status TEXT NOT NULL DEFAULT 'pending',
                     observation TEXT, PRIMARY KEY(task_id,action_id), UNIQUE(task_id,action_key));
+                CREATE TRIGGER IF NOT EXISTS execution_task_phase AFTER UPDATE OF status ON tasks
+                WHEN NEW.status IN ('queued','waiting_approval','failed','cancelled')
+                BEGIN
+                    UPDATE executions SET phase=NEW.status WHERE task_id=NEW.id;
+                END;
                 CREATE TABLE IF NOT EXISTS webhook_receipts (delivery_id TEXT PRIMARY KEY, received REAL NOT NULL, task_id TEXT NOT NULL REFERENCES tasks(id));
 
             """)

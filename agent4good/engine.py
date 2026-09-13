@@ -281,6 +281,10 @@ class Engine:
                         "UPDATE tasks SET status=?,error=?,updated_at=? WHERE id=? AND status='running'",
                         (status, message, now(), task_id),
                     )
+                    conn.execute(
+                        "UPDATE executions SET phase=? WHERE task_id=?",
+                        ("inspection" if status == "failed" else "recovering", task_id),
+                    )
                 self.db.event(
                     task_id, "recovery", "Saved execution queued" if status == "queued" else message
                 )

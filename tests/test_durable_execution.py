@@ -269,6 +269,7 @@ def test_cancel_during_write_retains_receipt(settings):
     e.registry._dispatch = cancel_after_write
     e.run(t)
     assert db.task(t)["status"] == "cancelled"
+    assert db.one("SELECT phase FROM executions")["phase"] == "cancelled"
     assert db.one("SELECT status FROM tool_runs")["status"] == "done"
     assert len(db.all("SELECT * FROM artifacts")) == 1
 
