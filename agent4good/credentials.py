@@ -186,6 +186,11 @@ class CredentialBroker:
             if task:
                 with self.db.connect() as conn:
                     parents = ancestors(conn, task_id)
+                    from .scheduling import origins
+
+                    sources = origins(conn, task_id)
+                    if any(p["agent"] not in metadata["agents"] for p in sources):
+                        raise CredentialError("Schedule creator credential scope denied")
             if (
                 purpose not in metadata["purposes"]
                 or (task and task["agent"] not in metadata["agents"])

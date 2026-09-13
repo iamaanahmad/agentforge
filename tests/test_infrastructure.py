@@ -429,7 +429,7 @@ def test_layered_memory_runtime_backup_restore(distributed, tmp_path):
     backup = tmp_path / "memory-backup.json"
     backup_postgres(db, backup)
     document = json.loads(backup.read_text())
-    assert document["version"] == 4
+    assert document["version"] == 5
     assert len(document["tables"]["memory_records"]) >= 4
     # Restore into a second disposable schema using the same domain and object prefix.
     from psycopg.conninfo import make_conninfo
@@ -501,6 +501,65 @@ def test_mission_postgres_workers_objects_and_restore(distributed, tmp_path):
         assert d["verification"][0]["met"]
         assert d["revision"] == 1 and d["status"] == "done"
         assert len(target.all("SELECT * FROM mission_plans")) == 1
+    finally:
+        with psycopg.connect(DSN, autocommit=True) as conn:
+            conn.execute(f"DROP SCHEMA {schema} CASCADE")
+
+
+def test_scheduler_modes_concurrency_and_restore(distributed, tmp_path):
+    from agent4good import scheduling as sch
+
+    settings, db = distributed
+    db.execute("UPDATE settings SET value='autonomous' WHERE key='autonomy'")
+    source = db.create_task("Source", "Supplied facts", "strategist")
+    db.execute("UPDATE tasks SET status='done' WHERE id=?", (source,))
+    ids = []
+    for mode in ["once", "recurring", "deadline", "event", "condition"]:
+        data = dict(
+            name="[TEST] " + mode, prompt="Supplied facts", mode=mode, depends_on=[source], priority=7
+        )
+        if mode in {"once", "deadline"}:
+            data["at"] = "2020-01-01T00:00:00+00:00"
+        if mode == "condition":
+            data["condition"] = {"task_id": source}
+        with db.connect() as conn:
+            sid = sch.create(conn, sch.ScheduleInput(**data))
+            conn.execute("UPDATE schedules SET next_run_at=? WHERE id=?", ("2020-01-01T00:00:00+00:00", sid))
+            if mode == "event":
+                assert sch.event(conn, sid, "delivery")
+                assert not sch.event(conn, sid, "delivery")
+        ids.append(sid)
+
+    def dispatch(_):
+        worker = PostgresDatabase(settings)
+        return Engine(worker, settings, FinalProvider()).schedule_due()
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        assert sum(pool.map(dispatch, range(8))) == 5
+    assert len(db.all("SELECT * FROM schedule_occurrences")) == 5
+    for _ in range(5):
+        engine = Engine(db, settings, FinalProvider())
+        tid = engine.claim()
+        assert tid
+        engine.run(tid)
+        assert db.task(tid)["status"] == "done"
+    assert dispatch(0) == 0
+    backup = tmp_path / "scheduler-backup.json"
+    backup_postgres(db, backup)
+    schema = "scheduler_restore_" + uuid4().hex
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(f"CREATE SCHEMA {schema}")
+    try:
+        from psycopg.conninfo import make_conninfo
+
+        target_settings = settings.model_copy(
+            update={"database_url": make_conninfo(DSN, options=f"-c search_path={schema}")}
+        )
+        target = PostgresDatabase(target_settings)
+        restore_postgres(target, backup)
+        assert Engine(target, target_settings, FinalProvider()).schedule_due() == 0
+        assert len(target.all("SELECT * FROM schedule_occurrences")) == 5
+        assert len(target.all("SELECT * FROM schedule_events")) == 1
     finally:
         with psycopg.connect(DSN, autocommit=True) as conn:
             conn.execute(f"DROP SCHEMA {schema} CASCADE")

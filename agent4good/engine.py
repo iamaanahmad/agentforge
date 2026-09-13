@@ -2,7 +2,7 @@ from .execution import ExecutionJournal, task_lock
 import httpx
 from .credentials import TASK_CONTEXT
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from .catalog import agent_prompt
 from .db import now
@@ -137,6 +137,9 @@ class Engine:
         self.db.require_owner(task)
         with self.db.connect() as conn:
             from .coordination import ancestors
+            from .scheduling import guard
+
+            guard(conn, task_id)
 
             if any(p["status"] in {"done", "failed", "cancelled"} for p in ancestors(conn, task_id)):
                 return False
@@ -352,20 +355,9 @@ class Engine:
         return self.registry.credentials.redact(text)
 
     def schedule_due(self):
-        ts = now()
-        with self.db.connect() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            autonomy = conn.execute("SELECT value FROM settings WHERE key='autonomy'").fetchone()[0]
-            rows = conn.execute(
-                "SELECT * FROM schedules WHERE enabled=1 AND next_run_at<=?", (ts,)
-            ).fetchall()
-            for row in rows:
-                # Supervised/manual schedules prepare drafts; autonomous schedules may run.
-                self.db.create_task(row["name"], row["prompt"], row["agent"], autonomy == "autonomous", conn)
-                next_at = (
-                    datetime.now(timezone.utc) + timedelta(minutes=row["interval_minutes"])
-                ).isoformat()
-                conn.execute("UPDATE schedules SET next_run_at=? WHERE id=?", (next_at, row["id"]))
+        from .scheduling import dispatch
+
+        return dispatch(self.db, self.settings, self.registry)
 
     def recover(self):
         # The worker holds its volume lock. Per-task locks also fence direct callers.

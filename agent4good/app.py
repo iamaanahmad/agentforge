@@ -6,7 +6,7 @@ import json
 import re
 import secrets
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -21,11 +21,12 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .memory import MemoryInput, MemoryStore, MemoryError
 from .catalog import AGENTS
-from . import missions
+from . import missions, scheduling
+from .scheduling import ScheduleInput
 from .config import Settings
 from .model_config import WorkType, task_work
 from .model_router import ModelRouter
-from .db import Database, now, uid
+from .db import Database, now
 from .policy import PolicyDocument, PolicyError
 from .tools import ToolRegistry
 
@@ -77,11 +78,8 @@ class ProjectInput(StrictInput):
     autonomy: Literal["manual", "supervised", "autonomous"]
 
 
-class ScheduleInput(StrictInput):
-    name: str = Field(min_length=1, max_length=160)
-    prompt: str = Field(min_length=1, max_length=20000)
-    agent: str = "strategist"
-    interval_minutes: int = Field(1440, ge=15, le=525600)
+class ScheduleEvent(StrictInput):
+    event_id: str = Field(min_length=1, max_length=160, pattern=r"^[a-zA-Z0-9_.:-]+$")
 
 
 class SchedulePatch(StrictInput):
@@ -112,6 +110,10 @@ def create_app(settings=None):
 
     for error_type in (psycopg.Error, BotoCoreError, ClientError):
         app.add_exception_handler(error_type, storage_failure)
+
+    @app.exception_handler(scheduling.ScheduleError)
+    async def schedule_error(request, exc):
+        return JSONResponse({"detail": str(exc)}, status_code=409)
 
     @app.exception_handler(MemoryError)
     async def memory_conflict(request, exc):
@@ -607,36 +609,58 @@ def create_app(settings=None):
     @app.get("/api/schedules", dependencies=[Depends(auth)])
     def schedules():
         return [
-            {**r, "enabled": bool(r["enabled"])}
-            for r in db.all("SELECT * FROM schedules ORDER BY created_at DESC")
+            {
+                **r,
+                "enabled": bool(r["enabled"]),
+                "config": json.loads(r["definition"]) if r["definition"] else {"mode": "interval"},
+            }
+            for r in db.all(
+                "SELECT s.*,d.definition,d.cancelled,d.runs FROM schedules s LEFT JOIN schedule_definitions d ON d.schedule_id=s.id ORDER BY s.created_at DESC"
+            )
         ]
 
     @app.post("/api/schedules", status_code=201, dependencies=[Depends(auth)])
     def add_schedule(payload: ScheduleInput):
-        valid_agent(payload.agent)
-        schedule_id = uid("schedule")
-        next_run = (datetime.now(timezone.utc) + timedelta(minutes=payload.interval_minutes)).isoformat()
-        db.execute(
-            "INSERT INTO schedules VALUES (?,?,?,?,?,1,?,?)",
-            (
-                schedule_id,
-                payload.name,
-                payload.prompt,
-                payload.agent,
-                payload.interval_minutes,
-                next_run,
-                now(),
-            ),
-        )
-        db.event(None, "schedule_created", f"Recurring task configured: {payload.name}")
+        with db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            schedule_id = scheduling.create(conn, payload)
+        db.event(None, "schedule_created", f"Schedule configured: {payload.name}")
         return db.one("SELECT * FROM schedules WHERE id=?", (schedule_id,))
 
     @app.patch("/api/schedules/{schedule_id}", dependencies=[Depends(auth)])
     def patch_schedule(schedule_id: str, payload: SchedulePatch):
-        if not db.execute("UPDATE schedules SET enabled=? WHERE id=?", (int(payload.enabled), schedule_id)):
-            raise HTTPException(404, "Schedule not found")
-        db.event(None, "schedule_updated", "Schedule resumed" if payload.enabled else "Schedule paused")
+        with db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            scheduling.control(conn, schedule_id, enabled=payload.enabled)
         return db.one("SELECT * FROM schedules WHERE id=?", (schedule_id,))
+
+    @app.post("/api/schedules/{schedule_id}/cancel", dependencies=[Depends(auth)])
+    def cancel_schedule(schedule_id: str):
+        with db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            scheduling.control(conn, schedule_id, cancel=True)
+        return {"cancelled": schedule_id}
+
+    @app.post("/api/schedules/{schedule_id}/events", dependencies=[Depends(auth)])
+    def schedule_event(schedule_id: str, payload: ScheduleEvent):
+        with db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            accepted = scheduling.event(conn, schedule_id, payload.event_id)
+        return {"accepted": accepted}
+
+    @app.get("/api/schedules/{schedule_id}", dependencies=[Depends(auth)])
+    def schedule_detail(schedule_id: str):
+        row = db.one("SELECT * FROM schedules WHERE id=?", (schedule_id,))
+        if not row:
+            raise HTTPException(404, "Schedule not found")
+        return {
+            **row,
+            "definition": db.one("SELECT * FROM schedule_definitions WHERE schedule_id=?", (schedule_id,)),
+            "occurrences": db.all(
+                "SELECT * FROM schedule_occurrences WHERE schedule_id=? ORDER BY created_at DESC LIMIT 100",
+                (schedule_id,),
+            ),
+        }
 
     @app.get("/api/integrations", dependencies=[Depends(auth)])
     def integrations():

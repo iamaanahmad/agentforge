@@ -49,3 +49,5 @@ See [security and migration](credential-security.md) before changing an existing
 
 `execution.py` checkpoints sequential plan revisions, dependencies, observations, and final execution checks.
 See [durable execution](durable-execution.md) for the exact recovery contract.
+
+The scheduler supports persisted one-time, daily recurring, deadline, event, and condition triggers alongside legacy intervals. Dependencies, priorities, finite occurrence budgets, cancellation, and atomic receipts apply before task dispatch. See [scheduling](scheduling.md) for time, overlap, migration, and agent-policy guarantees.

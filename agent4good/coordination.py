@@ -51,6 +51,9 @@ def enforce(conn, task, name):
     from .missions import guard
 
     guard(conn, task["id"], name)
+    from .scheduling import guard as schedule_guard
+
+    schedule_guard(conn, task["id"])
     row = conn.execute("SELECT * FROM worker_nodes WHERE task_id=?", (task["id"],)).fetchone()
     if row and name not in json.loads(row["tools"]):
         raise ValueError("Tool outside inherited worker permissions")
@@ -171,6 +174,9 @@ def settle(conn):
     from .missions import settle as settle_missions
 
     settle_missions(conn)
+    from .scheduling import settle as settle_schedules
+
+    settle_schedules(conn)
     # Cancellation/failure is transitive. A failed child does not cancel its siblings.
     for _ in range(9):
         children = conn.execute(

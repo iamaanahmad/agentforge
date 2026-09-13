@@ -124,7 +124,9 @@ class PolicyEngine:
             raise PolicyError(str(exc)) from None
         decision = self._evaluate_one(conn, task, spec, args)
         priority = {"allow": 0, "approval": 1, "conditional_approval": 1, "escalation": 2, "deny": 3}
-        for parent in ancestors(conn, task["id"]):
+        from .scheduling import origins
+
+        for parent in ancestors(conn, task["id"]) + origins(conn, task["id"]):
             inherited = self._evaluate_one(conn, parent, spec, args)
             if priority[inherited.effect] > priority[decision.effect]:
                 decision.effect = inherited.effect

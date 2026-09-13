@@ -44,6 +44,18 @@ def function(name, description, fields):
 
 INTERNAL_TOOLS = [
     function(
+        "schedule_create",
+        "Create bounded future work only under an explicit schedule_create allow policy. request is JSON matching the documented ScheduleInput. No nested or mission scheduling.",
+        {
+            "request": "JSON schedule definition: name, prompt, agent, mode, at, interval_minutes, timezone, local_time, depends_on, priority, deadline, missed, overlap, max_runs, condition"
+        },
+    ),
+    function(
+        "schedule_cancel",
+        "Cancel one schedule you created and stop its unfinished tasks.",
+        {"schedule_id": "Your schedule ID"},
+    ),
+    function(
         "worker_spawn",
         "Delegate a bounded independent deliverable. Use only when parallel expertise helps; give explicit tools and reason. Child authority cannot exceed yours.",
         {
@@ -299,7 +311,12 @@ OUTPUTS = {
     "github_open_pr": object_schema(url=STRING, number=INTEGER, draft={"const": True}),
     "send_email": object_schema(message_id=STRING),
 }
-OUTPUTS.update({name: OUTPUTS["worker_results"] for name in ("mission_plan", "mission_status")})
+OUTPUTS.update(
+    {
+        name: OUTPUTS["worker_results"]
+        for name in ("mission_plan", "mission_status", "schedule_create", "schedule_cancel")
+    }
+)
 
 CATEGORIES = (
     "Browser",
@@ -423,6 +440,7 @@ def build_specs():
                 if name in MUTATING
                 or name == "artifact_write"
                 or name == "mission_plan"
+                or name.startswith("schedule_")
                 or name.startswith("worker_")
                 and name != "worker_results"
                 else "READ"
@@ -1205,8 +1223,12 @@ class ToolRegistry:
             from .missions import reserve_tool
 
             reserve_tool(conn, task_id)
-            if name.startswith(("worker_", "mission_")):
-                if name.startswith("mission_"):
+            if name.startswith(("worker_", "mission_", "schedule_")):
+                if name.startswith("schedule_"):
+                    from .scheduling import tool_dispatch
+
+                    result = tool_dispatch(conn, self.db, self.settings, task_id, name, args)
+                elif name.startswith("mission_"):
                     from .missions import dispatch
 
                     result = dispatch(conn, self.db, task_id, name, args)
