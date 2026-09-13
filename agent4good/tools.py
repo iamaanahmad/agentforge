@@ -887,7 +887,7 @@ class ToolRegistry:
                 )
                 return {
                     "runs": [
-                        {k: r.get(k) for k in ("id", "head_sha", "status", "conclusion", "html_url")}
+                        {k: r.get(k) for k in ("id", "head_sha", "status", "conclusion", "html_url", "event", "head_branch")}
                         for r in data["workflow_runs"]
                     ]
                 }

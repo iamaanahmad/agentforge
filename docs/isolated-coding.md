@@ -33,7 +33,8 @@ An exit code or script-written test report is not an independent correctness ver
 ## Start the broker
 
 Use a dedicated, patched Linux sandbox host or disposable VM without company credentials or valuable data.
-The control and broker can share that host through separate OS service identities and a private socket directory.
+Run the model worker in a separate container with only the private broker socket directory mounted.
+Map its socket user to the broker owner UID. Never mount the Docker socket or broker files into that worker.
 The container engine requires working memory, PID, and CPU cgroup enforcement.
 Preflight refuses engines that report these controls unavailable.
 
