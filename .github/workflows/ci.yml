@@ -42,5 +42,32 @@ jobs:
           docker compose up --build -d --wait --wait-timeout 120
           curl --fail http://localhost:8000/healthz
           docker compose exec -T worker python -m agent4good.healthcheck
+      - name: Smoke test encrypted vault overlay and owner migration
+        run: |
+          docker compose stop
+          python3 - <<'PYKEY'
+          import base64, json, os, pathlib, secrets
+          directory = pathlib.Path('.ci-keys')
+          directory.mkdir(mode=0o700)
+          path = directory / 'keyring.json'
+          fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(fd, 'w') as stream:
+              json.dump({'active': 'ci', 'keys': {'ci': base64.b64encode(secrets.token_bytes(32)).decode()}}, stream)
+          PYKEY
+          sudo chown -R 10001:10001 .ci-keys
+          A4G_KEYRING_HOST_PATH="${PWD}/.ci-keys" docker compose -f compose.yaml -f compose.vault.yaml up -d --wait --wait-timeout 120
+          docker compose exec -T web python - <<'PYCHECK'
+          import httpx
+          from agent4good.config import Settings
+          settings = Settings()
+          with httpx.Client(base_url='http://localhost:8000') as client:
+              login = client.post('/api/login', json={'password': settings.admin_password})
+              assert login.status_code == 200
+              readiness = client.get('/api/readiness').json()
+              assert readiness['credential_storage'] == 'encrypted-vault'
+              assert readiness['multi_user_available'] is False
+          print('Owner login and encrypted vault overlay passed')
+          PYCHECK
+          docker compose exec -T worker python -m agent4good.healthcheck
       - if: always() && hashFiles('.env') != ''
         run: docker compose down -v

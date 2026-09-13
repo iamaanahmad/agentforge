@@ -8,9 +8,12 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
+from .credentials import CredentialError
+from .webhooks import authenticate_webhook
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .catalog import AGENTS
@@ -20,44 +23,54 @@ from .policy import PolicyDocument, PolicyError
 from .tools import ToolRegistry
 
 
-class Login(BaseModel):
+class StrictInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+
+class Login(StrictInput):
     password: str = Field(max_length=512)
 
 
-class TaskInput(BaseModel):
+class TaskInput(StrictInput):
     title: str = Field(min_length=1, max_length=160)
     prompt: str = Field(min_length=1, max_length=20000)
     agent: str = "strategist"
     start: bool = False
 
 
-class NoteInput(BaseModel):
+class WebhookTask(StrictInput):
+    title: str = Field(min_length=1, max_length=160)
+    prompt: str = Field(min_length=1, max_length=20000)
+    agent: str = "strategist"
+
+
+class NoteInput(StrictInput):
     content: str = Field(max_length=20000)
 
 
-class DecisionInput(BaseModel):
+class DecisionInput(StrictInput):
     decision: Literal["approve", "reject"]
 
 
-class PolicyInput(BaseModel):
+class PolicyInput(StrictInput):
     expected_revision: int = Field(ge=1)
     document: PolicyDocument
 
 
-class ProjectInput(BaseModel):
+class ProjectInput(StrictInput):
     name: str = Field(min_length=1, max_length=80)
     goal: str = Field(max_length=4000)
     autonomy: Literal["manual", "supervised", "autonomous"]
 
 
-class ScheduleInput(BaseModel):
+class ScheduleInput(StrictInput):
     name: str = Field(min_length=1, max_length=160)
     prompt: str = Field(min_length=1, max_length=20000)
     agent: str = "strategist"
     interval_minutes: int = Field(1440, ge=15, le=525600)
 
 
-class SchedulePatch(BaseModel):
+class SchedulePatch(StrictInput):
     enabled: bool
 
 
@@ -70,10 +83,22 @@ def create_app(settings=None):
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
     static = Path(__file__).parent / "static"
 
-    def token_hash(token):
-        return hmac.new(settings.session_secret.encode(), token.encode(), hashlib.sha256).hexdigest()
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request, exc):
+        return JSONResponse({"detail": "Invalid request fields or values"}, status_code=422)
 
-    def auth(request: Request):
+    @app.exception_handler(CredentialError)
+    async def credential_failure(request, exc):
+        return JSONResponse({"detail": "Credential access unavailable"}, status_code=503)
+
+    def token_hash(token):
+        return hmac.new(
+            settings.session_secret.encode(),
+            (settings.tenant_id + "\0" + settings.environment + "\0" + token).encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+    async def auth(request: Request):
         token = request.cookies.get("a4g_session", "")
         session = (
             db.one(
@@ -87,6 +112,10 @@ def create_app(settings=None):
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             if not hmac.compare_digest(request.headers.get("X-CSRF-Token", ""), session["csrf"]):
                 raise HTTPException(403, "Session verification failed. Refresh and try again.")
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            body = (await request.body()).decode("utf-8", errors="replace")
+            if registry.credentials.redact(body) != body:
+                raise HTTPException(400, "Credentials do not belong in request content")
         return session
 
     def valid_agent(agent):
@@ -95,7 +124,7 @@ def create_app(settings=None):
 
     def task_or_404(task_id):
         row = db.task(task_id)
-        if not row:
+        if not row or row["owner_id"] != "owner":
             raise HTTPException(404, "Task not found")
         return row
 
@@ -166,6 +195,44 @@ def create_app(settings=None):
         )
         return {"ok": True, "csrf_token": csrf}
 
+    @app.post("/api/webhooks/tasks", status_code=201)
+    async def webhook_task(request: Request):
+        raw = await request.body()
+        address = request.client.host if request.client else "unknown"
+        rate_key = "webhook:" + hashlib.sha256(address.encode()).hexdigest()
+        ts = time.time()
+        with db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            rate = conn.execute("SELECT * FROM rate_limits WHERE key=?", (rate_key,)).fetchone()
+            if rate and rate["resets"] > ts and rate["attempts"] >= 60:
+                raise HTTPException(429, "Webhook rate limit reached")
+            if not rate or rate["resets"] <= ts:
+                conn.execute("INSERT OR REPLACE INTO rate_limits VALUES (?,1,?)", (rate_key, ts + 60))
+            else:
+                conn.execute("UPDATE rate_limits SET attempts=attempts+1 WHERE key=?", (rate_key,))
+        delivery_id = authenticate_webhook(registry.credentials, request.headers, raw)
+        try:
+            payload = WebhookTask.model_validate_json(raw)
+        except ValueError:
+            raise HTTPException(422, "Invalid webhook task") from None
+        valid_agent(payload.agent)
+        if registry.credentials.redact(payload.model_dump()) != payload.model_dump():
+            raise HTTPException(400, "Credentials do not belong in request content")
+        if not payload.title.strip() or not payload.prompt.strip():
+            raise HTTPException(422, "Title and instructions cannot be blank")
+        with db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if conn.execute("SELECT 1 FROM webhook_receipts WHERE delivery_id=?", (delivery_id,)).fetchone():
+                raise HTTPException(409, "Webhook delivery already received")
+            # Even a signed event cannot start paid model work or approve an action.
+            task_id = db.create_task(payload.title, payload.prompt, payload.agent, False, conn)
+            conn.execute("INSERT INTO webhook_receipts VALUES (?,?,?)", (delivery_id, time.time(), task_id))
+            conn.execute(
+                "INSERT INTO events(task_id,kind,message,created_at) VALUES (?,?,?,?)",
+                (task_id, "webhook_received", "Signed webhook created a draft", now()),
+            )
+        return {"task_id": task_id, "status": "draft"}
+
     @app.get("/api/session")
     def session(session=Depends(auth)):
         return {"csrf_token": session["csrf"]}
@@ -185,19 +252,29 @@ def create_app(settings=None):
 
     @app.get("/api/overview", dependencies=[Depends(auth)])
     def overview():
-        counts = {r["status"]: r["n"] for r in db.all("SELECT status,COUNT(*) n FROM tasks GROUP BY status")}
+        counts = {
+            r["status"]: r["n"]
+            for r in db.all("SELECT status,COUNT(*) n FROM tasks WHERE owner_id='owner' GROUP BY status")
+        }
         project = db.settings()
         return {
             "project": {k: project[k] for k in ("name", "goal", "autonomy")},
             "counts": {
                 "tasks": sum(counts.values()),
                 "running": counts.get("running", 0),
-                "approvals": db.one("SELECT COUNT(*) n FROM approvals WHERE status='pending'")["n"],
+                "approvals": db.one(
+                    "SELECT COUNT(*) n FROM approvals WHERE status='pending' AND task_id IN (SELECT id FROM tasks WHERE owner_id='owner')"
+                )["n"],
                 "completed": counts.get("done", 0),
             },
             "worker": worker_status(),
-            "provider": {"configured": bool(settings.openai_api_key), "model": settings.model},
-            "recent_events": db.all("SELECT * FROM events ORDER BY id DESC LIMIT 15"),
+            "provider": {
+                "configured": registry.credentials.configured("openai_api_key"),
+                "model": settings.model,
+            },
+            "recent_events": db.all(
+                "SELECT * FROM events WHERE task_id IS NULL OR task_id IN (SELECT id FROM tasks WHERE owner_id='owner') ORDER BY id DESC LIMIT 15"
+            ),
         }
 
     @app.get("/api/readiness", dependencies=[Depends(auth)])
@@ -205,11 +282,15 @@ def create_app(settings=None):
         return {
             "database": True,
             "worker": worker_status(),
-            "model_configured": bool(settings.openai_api_key),
+            "model_configured": registry.credentials.configured("openai_api_key"),
             "secure_cookies": settings.secure_cookies,
             "max_steps": settings.max_steps,
             "max_daily_runs": settings.max_daily_runs,
             "deployment": "single-owner, single-worker",
+            "credential_storage": "encrypted-vault" if settings.credential_key_file else "legacy-environment",
+            "tenant": settings.tenant_id,
+            "environment": settings.environment,
+            "multi_user_available": False,
         }
 
     @app.get("/api/agents", dependencies=[Depends(auth)])
@@ -219,15 +300,18 @@ def create_app(settings=None):
     @app.get("/api/tasks", dependencies=[Depends(auth)])
     def tasks():
         return [
-            db.public_task(row) for row in db.all("SELECT * FROM tasks ORDER BY created_at DESC LIMIT 500")
+            db.public_task(row)
+            for row in db.all("SELECT * FROM tasks WHERE owner_id='owner' ORDER BY created_at DESC LIMIT 500")
         ]
 
     @app.post("/api/tasks", status_code=201, dependencies=[Depends(auth)])
     def create_task(payload: TaskInput):
         valid_agent(payload.agent)
+        if registry.credentials.redact(payload.model_dump()) != payload.model_dump():
+            raise HTTPException(400, "Credentials do not belong in request content")
         if not payload.title.strip() or not payload.prompt.strip():
             raise HTTPException(422, "Title and instructions cannot be blank")
-        if payload.start and not settings.openai_api_key:
+        if payload.start and not registry.credentials.configured("openai_api_key"):
             raise HTTPException(409, "Configure OpenAI before running a task. You can still save a draft.")
         task_id = db.create_task(payload.title.strip(), payload.prompt.strip(), payload.agent, payload.start)
         return db.public_task(db.task(task_id))
@@ -245,7 +329,7 @@ def create_app(settings=None):
     @app.post("/api/tasks/{task_id}/run", dependencies=[Depends(auth)])
     def run_task(task_id: str):
         task_or_404(task_id)
-        if not settings.openai_api_key:
+        if not registry.credentials.configured("openai_api_key"):
             raise HTTPException(409, "Configure A4G_OPENAI_API_KEY on the server before running agents")
         if not db.execute(
             "UPDATE tasks SET status='queued',updated_at=? WHERE id=? AND status='draft'", (now(), task_id)
@@ -302,7 +386,11 @@ def create_app(settings=None):
             approval = conn.execute("SELECT * FROM approvals WHERE id=?", (approval_id,)).fetchone()
             if not approval:
                 raise HTTPException(404, "Decision not found")
-            task = conn.execute("SELECT status FROM tasks WHERE id=?", (approval["task_id"],)).fetchone()
+            task = conn.execute(
+                "SELECT * FROM tasks WHERE id=? AND owner_id='owner'", (approval["task_id"],)
+            ).fetchone()
+            if not task:
+                raise HTTPException(404, "Decision not found")
             if approval["status"] != "pending" or task["status"] != "waiting_approval":
                 raise HTTPException(409, "This decision is no longer pending")
             approved = payload.decision == "approve"
@@ -393,13 +481,16 @@ def create_app(settings=None):
 
     @app.get("/api/events", dependencies=[Depends(auth)])
     def events():
-        return db.all("SELECT * FROM events ORDER BY id DESC LIMIT 200")
+        return db.all(
+            "SELECT * FROM events WHERE task_id IS NULL OR task_id IN (SELECT id FROM tasks WHERE owner_id='owner') ORDER BY id DESC LIMIT 200"
+        )
 
     @app.get("/api/artifacts/{artifact_id}", dependencies=[Depends(auth)])
     def artifact(artifact_id: str):
         row = db.one("SELECT * FROM artifacts WHERE id=?", (artifact_id,))
         if not row:
             raise HTTPException(404, "Artifact not found")
+        task_or_404(row["task_id"])
         # Always attachment + plain text: generated HTML must never execute on the application origin.
         return Response(
             row["content"],

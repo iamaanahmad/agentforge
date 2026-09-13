@@ -8,10 +8,10 @@ Prompt instructions are defense in depth, not a security boundary. Models can st
 
 Known boundaries:
 
-- One shared owner password; no SSO, MFA, roles, tenant isolation, or password-reset service.
-- SQLite and backups are plaintext. Use disk encryption and restrict host access.
-- API keys live in server configuration. Do not commit `.env` or put secrets in tasks. Common credential file paths are blocked, but arbitrary source files may still contain secrets.
-- Known configured secret strings are redacted from final results and tool results. This does not detect every secret or private datum.
+- One owner per database, tenant, and environment. No multi-user login, SSO, MFA, or password-reset service.
+- Vault credential values use authenticated encryption with separately stored keys. Other SQLite data remains plaintext; encrypt disks and backups.
+- Prefer the scoped encrypted vault. Legacy environment-only configuration remains supported and is labeled explicitly. Never commit secrets.
+- Known secrets are rejected from request/tool content and redacted from model inputs, outputs, and saved state. Unknown or transformed secrets remain a risk.
 - An external request already in flight may complete after Stop. Ambiguous failures require provider-side inspection.
 - No automatic HTTP retries for external writes. Receipt-based replay prevention is not a distributed exactly-once guarantee.
 - Audit events are owner-readable operational records, not tamper-proof compliance logs.
@@ -19,3 +19,5 @@ Known boundaries:
 - No security audit, penetration test, or regulatory certification is claimed.
 
 Report suspected vulnerabilities privately to the repository owner through an agreed private channel. Do not post credentials or customer data in public GitHub issues.
+
+See [credential boundaries, migration, rotation, and webhook authentication](docs/credential-security.md) for the threat model and operational limits.

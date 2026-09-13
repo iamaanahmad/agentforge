@@ -2,16 +2,24 @@ import httpx
 
 
 class ResponsesProvider:
-    def __init__(self, settings):
+    def __init__(self, settings, credentials=None):
         self.settings = settings
+        self.credentials = credentials
 
     def respond(self, instructions, items, tools):
-        if not self.settings.openai_api_key:
+        key = (
+            self.credentials.get("openai_api_key", "model")
+            if self.credentials
+            else self.settings.openai_api_key
+        )
+        if not key:
             raise RuntimeError("Configure A4G_OPENAI_API_KEY before running agents.")
-        with httpx.Client(timeout=httpx.Timeout(90, connect=10), follow_redirects=False) as client:
+        with httpx.Client(
+            timeout=httpx.Timeout(90, connect=10), follow_redirects=False, trust_env=False
+        ) as client:
             response = client.post(
                 "https://api.openai.com/v1/responses",
-                headers={"Authorization": f"Bearer {self.settings.openai_api_key}"},
+                headers={"Authorization": f"Bearer {key}"},
                 json={
                     "model": self.settings.model,
                     "instructions": instructions,

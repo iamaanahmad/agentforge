@@ -139,3 +139,10 @@ See [tool contracts and bounded live evidence](docs/tool-registry.md).
 Owner-configured rules now restrict tool execution by user, role, task, tool, environment, and action class.
 Existing exact write approvals remain mandatory. Shared limits reserve attempts, recipients, and configured cost ceilings.
 See [policy configuration and limits](docs/action-policies.md). Actual provider billing and multi-user operation remain outside this scope.
+
+## Credential and environment protection
+
+An encrypted vault now brokers credentials by owner, agent role, adapter purpose, tenant, and environment.
+Keys remain outside the data volume. Signed webhooks can create drafts, with replay and rate checks.
+Existing owner deployments remain supported; multi-user and arbitrary command execution remain unavailable.
+See [migration, key rotation, and the threat model](docs/credential-security.md).

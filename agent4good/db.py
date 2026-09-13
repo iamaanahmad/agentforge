@@ -56,6 +56,10 @@ class Database:
                 CREATE TABLE IF NOT EXISTS policy_legacy (approval_id TEXT PRIMARY KEY REFERENCES approvals(id));
                 CREATE TABLE IF NOT EXISTS policy_usage (id INTEGER PRIMARY KEY, bucket TEXT NOT NULL, created_at REAL NOT NULL, calls INTEGER NOT NULL, cost INTEGER NOT NULL, recipients INTEGER NOT NULL);
                 CREATE INDEX IF NOT EXISTS policy_usage_window ON policy_usage(bucket,created_at);
+                CREATE TABLE IF NOT EXISTS security_domain (id INTEGER PRIMARY KEY CHECK(id=1), tenant TEXT NOT NULL, environment TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS credentials (name TEXT PRIMARY KEY, key_id TEXT NOT NULL, nonce BLOB NOT NULL, ciphertext BLOB NOT NULL, metadata TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS webhook_receipts (delivery_id TEXT PRIMARY KEY, received REAL NOT NULL, task_id TEXT NOT NULL REFERENCES tasks(id));
+
             """)
             conn.execute("BEGIN IMMEDIATE")
             if "owner_id" not in {row["name"] for row in conn.execute("PRAGMA table_info(tasks)")}:
@@ -63,9 +67,24 @@ class Database:
             if not conn.execute("SELECT 1 FROM action_policy").fetchone():
                 conn.execute("INSERT INTO action_policy VALUES (1,1,'{}')")
                 conn.execute("INSERT INTO policy_legacy SELECT id FROM approvals")
-            conn.execute("PRAGMA user_version=2")
+            conn.execute("PRAGMA user_version=3")
             for key, value in {"name": "Agent4Good", "goal": "", "autonomy": "supervised"}.items():
                 conn.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, value))
+
+    def bind_security_domain(self, settings):
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM security_domain WHERE id=1").fetchone()
+            if row and (row["tenant"], row["environment"]) != (settings.tenant_id, settings.environment):
+                raise RuntimeError("Database belongs to another tenant or environment")
+            if not row:
+                conn.execute(
+                    "INSERT INTO security_domain VALUES (1,?,?)", (settings.tenant_id, settings.environment)
+                )
+
+    def require_owner(self, task):
+        if not task or task["owner_id"] != "owner":
+            raise RuntimeError("Task is outside the owner boundary")
 
     @contextmanager
     def connect(self):
@@ -121,9 +140,9 @@ class Database:
         return {k: v for k, v in row.items() if k not in {"items", "pending"}}
 
     def approval_list(self, task_id=None):
-        sql = "SELECT * FROM approvals"
+        sql = "SELECT * FROM approvals WHERE task_id IN (SELECT id FROM tasks WHERE owner_id='owner')"
         rows = self.all(
-            sql + (" WHERE task_id=?" if task_id else "") + " ORDER BY created_at DESC",
+            sql + (" AND task_id=?" if task_id else "") + " ORDER BY created_at DESC",
             (task_id,) if task_id else (),
         )
         for row in rows:

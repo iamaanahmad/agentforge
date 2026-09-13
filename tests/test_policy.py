@@ -145,7 +145,7 @@ def test_policy_change_between_reservation_and_dispatch(settings, monkeypatch):
 
 @pytest.mark.parametrize("limit", ["calls", "spend_microusd", "recipients"])
 def test_concurrent_workers_share_caps_and_replay_costs_nothing(settings, monkeypatch, limit):
-    settings.resend_api_key, settings.mail_from = "test", "owner@example.com"
+    settings.resend_api_key, settings.mail_from = "fake-resend-credential", "owner@example.com"
     r, _ = runnable(settings)
     install(r, limits={limit: 2}, tool_costs_microusd={"send_email": 1})
     tasks = [r.db.create_task("Tagged test", "No real send", "strategist") for _ in range(8)]
@@ -188,7 +188,7 @@ def test_rule_limit_survives_policy_edits_and_failures(settings, monkeypatch):
 
 
 def test_recipient_and_cost_conditions(settings):
-    settings.resend_api_key, settings.mail_from = "test", "owner@example.com"
+    settings.resend_api_key, settings.mail_from = "fake-resend-credential", "owner@example.com"
     r, task = runnable(settings)
     args = {"to": "other@example.com", "subject": "Test", "body": "Never sent"}
     install(
@@ -298,7 +298,7 @@ def test_owner_api_resumes_escalation_and_records_no_content(owner, app, setting
 
 
 def test_github_communications_use_recipient_budget(settings, monkeypatch):
-    settings.github_repo, settings.github_token = "owner/repo", "test"
+    settings.github_repo, settings.github_token = "owner/repo", "fake-github-credential"
     r, task = runnable(settings)
     install(r, limits={"recipients": 0})
     args = {"title": "Tagged test", "body": "Must not send"}

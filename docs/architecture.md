@@ -35,8 +35,11 @@ Future browser or code-execution support needs a separate sandbox with resource 
 
 ## Data and operations
 
-SQLite WAL storage must live on a local persistent disk shared by the two processes. Do not use NFS or run multiple hosts against this database. Schema version 1 is a new-install schema; future schema changes require explicit migrations and backup validation.
+SQLite WAL storage must live on a local persistent disk shared by the two processes. Do not use NFS or run multiple hosts against this database. Schema version 3 adds a persistent tenant/environment binding, encrypted credentials, and webhook receipts. Existing owner data migrates in place.
 
-Records remain until the owner archives or removes the deployment data through a maintenance procedure. There is no automatic retention purge or encryption at rest. Encrypt disks and backups. Private task content may be sent to the selected model provider; `store=false` does not override that provider's contractual retention policies.
+Records remain until the owner archives or removes the deployment data through a maintenance procedure. There is no automatic retention purge. Vault credentials are encrypted; other workspace records remain plaintext. Encrypt disks and backups. Private task content may be sent to the selected model provider; `store=false` does not override that provider's contractual retention policies.
 
 See [the registry contract](tool-registry.md) for the public execution interface and tested limits.
+
+`credentials.py` owns host-only credential storage and brokerage. `webhooks.py` verifies signed draft creation.
+See [security and migration](credential-security.md) before changing an existing deployment.
