@@ -1,0 +1,32 @@
+name: Isolated coding acceptance
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+      - run: uv sync --frozen --group dev
+      - name: Build reviewed offline toolchain
+        run: docker build -f sandbox/Dockerfile -t agent4good-sandbox:ci .
+      - name: Real coding, container packaging, and hostile-code checks
+        env:
+          A4G_TEST_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          export A4G_TEST_SANDBOX_IMAGE="$(docker image inspect agent4good-sandbox:ci --format '{{.Id}}')"
+          uv run pytest tests/test_sandbox.py tests/test_delivery.py -v --junitxml=sandbox-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sandbox-acceptance
+          path: sandbox-results.xml
+      - name: Assert disposable workspaces are gone
+        if: always()
+        run: test -z "$(docker ps -aq --filter label=agent4good.sandbox=true)"

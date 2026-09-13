@@ -22,11 +22,17 @@ PURPOSES = {
         "github_create_branch",
         "github_write_file",
         "github_open_pr",
+        "sandbox_run",
+        "github_pr_status",
+        "github_merge_pr",
+        "github_dispatch_workflow",
+        "github_workflow_status",
     },
     "search_api_key": {"web_search"},
     "resend_api_key": {"send_email"},
     "webhook_secret": {"webhook"},
 }
+PURPOSES["github_app_private_key"] = set(PURPOSES["github_token"])
 
 
 class CredentialError(RuntimeError):
@@ -148,6 +154,8 @@ class CredentialBroker:
             )
 
     def configured(self, name):
+        if name == "github_token" and self.settings.github_app_id and self.settings.github_installation_id:
+            return self.configured("github_app_private_key")
         if name not in PURPOSES:
             return bool(getattr(self.settings, name, None))
         if self.db.one("SELECT 1 FROM credentials WHERE name=?", (name,)):

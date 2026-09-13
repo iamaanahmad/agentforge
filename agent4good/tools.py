@@ -1,4 +1,4 @@
-"""Bounded service adapters. The model never chooses credentials, repositories or shell commands."""
+"""Bounded adapters. Generated shell commands execute only through the isolated broker."""
 
 from .credentials import CredentialBroker, TASK_CONTEXT, TOOL_CONTEXT
 
@@ -58,6 +58,31 @@ INTERNAL_TOOLS = [
 
 TOOL_DEFINITIONS = [
     function(
+        "sandbox_run",
+        "Clone a pinned repository snapshot into a disposable offline coding sandbox.",
+        {
+            "ref": "Exact 40-character Git commit SHA",
+            "script": "POSIX shell script, max 20000 characters",
+            "artifacts": "Newline-separated relative paths to export, max 8 files and 80 KB combined",
+        },
+    ),
+    function("github_pr_status", "Inspect a PR head and its actual check results.", {"number": "PR number"}),
+    function(
+        "github_merge_pr",
+        "Merge one approved PR at an exact SHA after configured checks pass.",
+        {"number": "PR number", "sha": "Exact approved head SHA"},
+    ),
+    function(
+        "github_dispatch_workflow",
+        "Dispatch an owner-allowlisted workflow on the default branch after approval.",
+        {"workflow": "Owner-configured workflow filename", "sha": "Exact approved default branch SHA"},
+    ),
+    function(
+        "github_workflow_status",
+        "Read actual workflow runs for a commit; dispatch acceptance is not completion.",
+        {"workflow": "Owner-configured workflow filename", "sha": "Commit SHA"},
+    ),
+    function(
         "web_fetch",
         "Read text from an owner-allowlisted public HTTPS host. No redirects or private networks.",
         {"url": "HTTPS URL"},
@@ -107,6 +132,9 @@ TOOL_DEFINITIONS = [
 ]
 
 MUTATING = {
+    "sandbox_run",
+    "github_merge_pr",
+    "github_dispatch_workflow",
     "github_create_issue",
     "github_create_branch",
     "github_write_file",
@@ -137,6 +165,22 @@ STRING = {"type": "string", "maxLength": 100000}
 NULLABLE = {"type": ["string", "null"], "maxLength": 100000}
 INTEGER = {"type": "integer"}
 OUTPUTS = {
+    "sandbox_run": object_schema(
+        job_id=STRING,
+        input_sha256=STRING,
+        source_sha=STRING,
+        exit_code=INTEGER,
+        log=STRING,
+        artifacts={
+            "type": "array",
+            "maxItems": 8,
+            "items": object_schema(path=STRING, sha256=STRING, download=STRING),
+        },
+    ),
+    "github_pr_status": object_schema(number=INTEGER, sha=STRING, state=STRING, checks={"type": "array"}),
+    "github_merge_pr": object_schema(merged={"const": True}, sha=STRING),
+    "github_dispatch_workflow": object_schema(accepted={"const": True}, workflow=STRING, sha=STRING),
+    "github_workflow_status": object_schema(runs={"type": "array", "maxItems": 20}),
     "memory_read": {
         "oneOf": [
             object_schema(found={"const": False}),
@@ -179,6 +223,7 @@ CATEGORIES = (
     "Social/API",
 )
 ACTION_ID = ContextVar("action_id", default="")
+GITHUB_LEASE = ContextVar("github_lease", default=None)
 DEADLINE = ContextVar("tool_deadline", default=None)
 
 
@@ -204,7 +249,9 @@ def build_specs():
     specs = {}
     for definition in INTERNAL_TOOLS + TOOL_DEFINITIONS:
         name = definition["name"]
-        if name.startswith("github_"):
+        if name == "sandbox_run":
+            category, auth = "Shell", ("sandbox_socket", "github_repo", "github_token")
+        elif name.startswith("github_"):
             category, auth = "GitHub", ("github_token", "github_repo")
         elif name == "send_email":
             category, auth = "Email", ("resend_api_key", "mail_from")
@@ -214,9 +261,23 @@ def build_specs():
             category, auth = "Web Search", ("allowed_read_hosts",)
         else:
             category, auth = ("Filesystem" if name == "artifact_write" else "Database"), ()
+        if name == "github_merge_pr":
+            auth += ("github_merge_checks",)
+        if name in {"github_dispatch_workflow", "github_workflow_status"}:
+            auth += ("github_deploy_workflows",)
         schema = deepcopy(definition["parameters"])
         for field in schema["properties"].values():
             field["maxLength"] = 100000
+        if name == "sandbox_run":
+            schema["properties"]["ref"]["pattern"] = "^[a-f0-9]{40}$"
+            schema["properties"]["script"]["maxLength"] = 20000
+            schema["properties"]["artifacts"]["maxLength"] = 1600
+        if "sha" in schema["properties"] and name in {
+            "github_merge_pr",
+            "github_dispatch_workflow",
+            "github_workflow_status",
+        }:
+            schema["properties"]["sha"]["pattern"] = "^[a-f0-9]{40}$"
         if name.startswith("memory_"):
             schema["properties"]["key"]["pattern"] = "^[a-zA-Z0-9_-]{1,64}$"
         if name == "memory_write":
@@ -231,6 +292,11 @@ def build_specs():
             "exact_owner_approval" if name in MUTATING else "workspace_read_or_artifact",
             "high" if name in MUTATING else "low",
             {
+                "Shell": (
+                    "offline disposable container",
+                    "fixed resource limits",
+                    "no host mounts or secrets",
+                ),
                 "GitHub": (
                     "server-configured repository",
                     "agent4good/ branches for code writes",
@@ -247,12 +313,15 @@ def build_specs():
                 "Filesystem": ("owner workspace text artifacts only; no host filesystem access",),
             }[category],
             action_class=(
-                "EXTERNAL_COMMUNICATION"
+                "DEPLOYMENT"
+                if name in {"github_merge_pr", "github_dispatch_workflow"}
+                else "EXTERNAL_COMMUNICATION"
                 if name in {"send_email", "github_create_issue", "github_open_pr"}
                 else "WRITE"
                 if name in MUTATING or name == "artifact_write"
                 else "READ"
             ),
+            timeout_seconds=360 if name == "sandbox_run" else 60,
         )
         Draft202012Validator.check_schema(schema)
         Draft202012Validator.check_schema(OUTPUTS[name])
@@ -421,7 +490,7 @@ class ToolRegistry:
                     content.extend(chunk)
                     if len(content) > 2_000_000:
                         raise ToolError("Service response exceeds size limit")
-                return json.loads(content)
+                return json.loads(content) if content else {}
 
     def _github(self, method, endpoint, payload=None):
         repo = self.settings.github_repo
@@ -431,12 +500,89 @@ class ToolRegistry:
             method,
             "https://api.github.com/repos/" + repo + endpoint,
             {
-                "Authorization": "Bearer " + self.credentials.get("github_token", TOOL_CONTEXT.get()),
+                "Authorization": "Bearer " + self._github_token(),
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
             },
             payload,
         )
+
+    def _github_token(self):
+        if not (self.settings.github_app_id and self.settings.github_installation_id):
+            return self.credentials.get("github_token", TOOL_CONTEXT.get())
+        lease = GITHUB_LEASE.get()
+        if lease:
+            return lease
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import padding
+
+        def encode(value):
+            return base64.urlsafe_b64encode(value).rstrip(b"=")
+
+        issued = int(time.time())
+        header = encode(b'{"alg":"RS256","typ":"JWT"}')
+        payload = encode(
+            json.dumps({"iat": issued - 60, "exp": issued + 540, "iss": self.settings.github_app_id}).encode()
+        )
+        unsigned = header + b"." + payload
+        key = serialization.load_pem_private_key(
+            self.credentials.get("github_app_private_key", TOOL_CONTEXT.get()).encode(), password=None
+        )
+        jwt = (unsigned + b"." + encode(key.sign(unsigned, padding.PKCS1v15(), hashes.SHA256()))).decode()
+        self.credentials._leased_secrets.add(jwt)
+        tool = TOOL_CONTEXT.get()
+        permissions = {"contents": "read"}
+        if tool in {
+            "github_write_file",
+            "github_create_branch",
+            "github_merge_pr",
+            "github_dispatch_workflow",
+        }:
+            permissions["contents"] = "write"
+        if tool in {"github_open_pr", "github_merge_pr"}:
+            permissions["pull_requests"] = "write"
+        if tool == "github_pr_status":
+            permissions.update(pull_requests="read", checks="read")
+        if tool == "github_merge_pr":
+            permissions["checks"] = "read"
+        if tool in {"github_dispatch_workflow", "github_workflow_status"}:
+            permissions["actions"] = "write" if tool == "github_dispatch_workflow" else "read"
+        if tool in {"github_create_issue", "github_list_issues"}:
+            permissions["issues"] = "write" if tool == "github_create_issue" else "read"
+        installation = self.settings.github_installation_id
+        if not installation.isdecimal():
+            raise ToolError("Invalid GitHub installation ID")
+        data = self._request(
+            "POST",
+            f"https://api.github.com/app/installations/{installation}/access_tokens",
+            {"Authorization": "Bearer " + jwt, "Accept": "application/vnd.github+json"},
+            {"repositories": [self.settings.github_repo.split("/")[1]], "permissions": permissions},
+        )
+        token = data["token"]
+        self.credentials._leased_secrets.add(token)
+        GITHUB_LEASE.set(token)
+        return token
+
+    def _release_github_lease(self):
+        token = GITHUB_LEASE.get()
+        if token:
+            try:
+                response = httpx.delete(
+                    "https://api.github.com/installation/token",
+                    headers={"Authorization": "Bearer " + token},
+                    timeout=5,
+                    trust_env=False,
+                )
+                if response.status_code != 204:
+                    self.db.event(
+                        None,
+                        "credential_lease",
+                        "GitHub token revocation unconfirmed; provider expiry applies",
+                    )
+            except Exception:
+                self.db.event(
+                    None, "credential_lease", "GitHub token revocation unconfirmed; provider expiry applies"
+                )
 
     @staticmethod
     def _branch(branch):
@@ -465,6 +611,15 @@ class ToolRegistry:
         self._remaining()
         if name in {"memory_read", "memory_write", "artifact_write"}:
             return self._internal(task_id, name, args)
+        if name == "sandbox_run":
+            return self._sandbox(task_id, args)
+        if name in {
+            "github_pr_status",
+            "github_merge_pr",
+            "github_dispatch_workflow",
+            "github_workflow_status",
+        }:
+            return self._delivery(name, args)
         if name == "web_fetch":
             url = urlsplit(args["url"])
             if url.scheme != "https" or url.username or url.password or url.port not in {None, 443}:
@@ -647,6 +802,157 @@ class ToolRegistry:
             return {"id": artifact_id, "name": args["name"], "download": f"/api/artifacts/{artifact_id}"}
         raise ToolError("Unknown internal tool")
 
+    def _sandbox(self, task_id, args):
+        from .sandbox import Job, SandboxClient
+        from .artifacts import save_artifact
+
+        # Fetch only the configured repository at an immutable revision. No clone credentials cross the boundary.
+        tree = self._github("GET", "/git/trees/" + args["ref"] + "?recursive=1")
+        prefix = self.settings.sandbox_source_prefix
+        if prefix:
+            from .sandbox import safe_path
+
+            safe_path(prefix)
+        entries = [
+            item for item in tree.get("tree", []) if not prefix or item["path"].startswith(prefix + "/")
+        ]
+        if tree.get("truncated") or len(entries) > 256 or not entries:
+            raise ToolError("Repository snapshot exceeds sandbox limits")
+        files = {}
+        for item in entries:
+            if item["type"] == "tree":
+                continue
+            if item.get("mode") not in {"100644", "100755"} or item["type"] != "blob":
+                raise ToolError("Submodules and symbolic links are not supported in sandbox snapshots")
+            path = item["path"][len(prefix) + 1 :] if prefix else item["path"]
+            self._path(path)
+            if item.get("size", 0) > 100000:
+                raise ToolError("Repository file exceeds sandbox size limit")
+            blob = self._github("GET", "/git/blobs/" + item["sha"])
+            try:
+                files[path] = base64.b64decode(blob["content"]).decode("utf-8")
+            except (ValueError, UnicodeError):
+                raise ToolError("Sandbox source currently supports UTF-8 files only") from None
+            if len(json.dumps(files).encode()) > 700000:
+                raise ToolError("Repository snapshot exceeds sandbox input limit")
+        if self.credentials.redact(files) != files:
+            raise ToolError("Repository snapshot contains a configured credential")
+        job = Job(
+            id=ACTION_ID.get(),
+            files=files,
+            script=args["script"],
+            artifacts=args["artifacts"].splitlines() if args["artifacts"] else [],
+        ).checked()
+
+        def active():
+            self._remaining()
+            return self.db.task(task_id)["status"] == "running"
+
+        result = SandboxClient(self.settings.sandbox_socket).run(job, active)
+        artifacts = []
+        for path, content in result["artifacts"].items():
+            decoded = base64.b64decode(content, validate=True)
+            artifact_id = uid("artifact")
+            # Text attachment contains base64 for binary safety; never execute or extract it on the control host.
+            save_artifact(
+                self.db, self.settings, artifact_id, task_id, path.replace("/", "_") + ".b64", content
+            )
+            artifacts.append(
+                {
+                    "path": path,
+                    "sha256": hashlib.sha256(decoded).hexdigest(),
+                    "download": f"/api/artifacts/{artifact_id}",
+                }
+            )
+        return {
+            "job_id": job.id,
+            "input_sha256": result["input_sha256"],
+            "source_sha": args["ref"],
+            "exit_code": result["exit_code"],
+            "log": result["log"],
+            "artifacts": artifacts,
+        }
+
+    def _delivery(self, name, args):
+        if name in {"github_dispatch_workflow", "github_workflow_status"}:
+            workflow = args["workflow"]
+            if workflow not in self.settings.github_deploy_workflows or not re.fullmatch(
+                r"[\w.-]+\.ya?ml", workflow
+            ):
+                raise ToolError("Workflow is not owner-allowlisted")
+            endpoint = "/actions/workflows/" + quote(workflow, safe="")
+            if name == "github_workflow_status":
+                data = self._github(
+                    "GET", endpoint + "/runs?" + urlencode({"head_sha": args["sha"], "per_page": 20})
+                )
+                return {
+                    "runs": [
+                        {
+                            k: r.get(k)
+                            for k in (
+                                "id",
+                                "head_sha",
+                                "status",
+                                "conclusion",
+                                "html_url",
+                                "event",
+                                "head_branch",
+                            )
+                        }
+                        for r in data["workflow_runs"]
+                    ]
+                }
+            default = self._github("GET", "")["default_branch"]
+            ref = self._github("GET", "/git/ref/heads/" + quote(default, safe=""))
+            if ref["object"]["sha"] != args["sha"]:
+                raise ToolError("Default branch changed; obtain a fresh exact approval")
+            # workflow_dispatch accepts branch/tag refs. Bind a new immutable-by-contract tag to the approved SHA.
+            tag = "agent4good-deploy/" + args["sha"]
+            self._github("POST", "/git/refs", {"ref": "refs/tags/" + tag, "sha": args["sha"]})
+            self._github("POST", endpoint + "/dispatches", {"ref": tag})
+            return {"accepted": True, "workflow": workflow, "sha": args["sha"]}
+        if not re.fullmatch(r"[1-9][0-9]{0,9}", args["number"]):
+            raise ToolError("Invalid pull request number")
+        number = int(args["number"])
+        pr = self._github("GET", f"/pulls/{number}")
+        sha = pr["head"]["sha"]
+        data = self._github("GET", f"/commits/{sha}/check-runs?per_page=100")
+        checks = [
+            {k: r.get(k) for k in ("name", "status", "conclusion", "head_sha")} for r in data["check_runs"]
+        ]
+        if name == "github_pr_status":
+            return {"number": number, "sha": sha, "state": pr["state"], "checks": checks}
+        self._branch(pr["head"]["ref"])
+        default = self._github("GET", "")["default_branch"]
+        if (
+            pr["head"]["repo"]["full_name"] != self.settings.github_repo
+            or pr["base"]["ref"] != default
+            or sha != args["sha"]
+            or pr["state"] != "open"
+            or pr["draft"]
+        ):
+            raise ToolError("PR head, base, state, or approval SHA does not match")
+        if data.get("total_count", len(checks)) > 100 or not self.settings.github_merge_checks:
+            raise ToolError("Cannot establish required checks")
+        # Every returned run for each required name must pass; old successes cannot mask newer failures.
+        for expected in self.settings.github_merge_checks:
+            matching = [c for c in checks if c["name"] == expected]
+            if not matching or any(
+                c["status"] != "completed" or c["conclusion"] != "success" for c in matching
+            ):
+                raise ToolError("Required checks have not passed")
+        changed = self._github("GET", f"/pulls/{number}/files?per_page=100")
+        if pr.get("changed_files", 101) > 100:
+            raise ToolError("PR exceeds bounded file review")
+        for item in changed:
+            self._path(item["filename"], write=True)
+            if item.get("previous_filename"):
+                self._path(item["previous_filename"], write=True)
+        merged = self._github("PUT", f"/pulls/{number}/merge", {"sha": sha, "merge_method": "squash"})
+        if not merged.get("merged"):
+            raise ToolError("GitHub did not confirm merge")
+        return {"merged": True, "sha": merged["sha"]}
+
     @staticmethod
     def _remaining():
         deadline = DEADLINE.get()
@@ -729,6 +1035,7 @@ class ToolRegistry:
             )
         action_token = ACTION_ID.set(hashlib.sha256((task_id + ":" + call_id).encode()).hexdigest())
         token = DEADLINE.set(time.monotonic() + spec.timeout_seconds)
+        github_lease_token = GITHUB_LEASE.set(None)
         try:
             with self.db.connect() as conn:
                 conn.execute("BEGIN IMMEDIATE")
@@ -777,5 +1084,7 @@ class ToolRegistry:
             self.db.event(task_id, "tool_failed", name + ": execution incomplete; inspect receipt")
             raise
         finally:
+            self._release_github_lease()
+            GITHUB_LEASE.reset(github_lease_token)
             DEADLINE.reset(token)
             ACTION_ID.reset(action_token)

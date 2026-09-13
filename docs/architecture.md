@@ -32,7 +32,7 @@ Recovery requeues safe interrupted `running` tasks from saved checkpoints. Ambig
 6. Test denied/approved/malformed/timeout/replay paths with fake services. Then perform a bounded live acceptance test.
 7. Update the relevant original playbook and documentation. Do not claim a new skill works until the tool path does.
 
-Future browser or code-execution support needs a separate sandbox with resource limits, an egress policy, credential isolation, and a job protocol. It must not run arbitrary model commands inside the API/worker container.
+Coding execution uses a separate offline Docker broker through a private Unix socket. It has fixed resource caps and no host mounts. See [isolated coding](isolated-coding.md). Browser execution remains planned. Arbitrary model commands never run inside the API/worker container.
 
 ## Data and operations
 
