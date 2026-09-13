@@ -2,13 +2,11 @@
 
 import base64
 import hashlib
-import io
 import json
 import os
 from pathlib import PurePosixPath
 import re
 import subprocess
-import tarfile
 import threading
 import time
 
@@ -151,13 +149,20 @@ class DockerSandbox:
                 time.sleep(0.1)
             if proc.returncode:
                 raise SandboxError("Sandbox runner failed or exceeded resources")
-            # docker cp only returns a fixed small result, never extracts untrusted archives on the host.
-            raw = self.docker(["cp", name + ":/workspace/result.json", "-"], limit=250000)
-            with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
-                members = archive.getmembers()
-                if len(members) != 1 or not members[0].isfile() or members[0].size > 200000:
-                    raise SandboxError("Invalid sandbox result")
-                result = json.load(archive.extractfile(members[0]))
+            # Read a bounded regular file through the container namespace. Docker cp cannot read tmpfs mounts.
+            raw = self.docker(
+                [
+                    "exec",
+                    name,
+                    "python3",
+                    "-I",
+                    "-c",
+                    "import os,stat,sys; f=os.open('/workspace/result.json',os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK); "
+                    "assert stat.S_ISREG(os.fstat(f).st_mode); sys.stdout.buffer.write(os.read(f,200001))",
+                ],
+                limit=200000,
+            )
+            result = json.loads(raw)
             if set(result) != {"exit_code", "log", "artifacts"} or type(result["exit_code"]) is not int:
                 raise SandboxError("Invalid sandbox result")
             if not isinstance(result["log"], str) or len(result["log"]) > 12000:
@@ -288,7 +293,14 @@ def serve():
         return {"removed": True}
 
     # SIGKILL recovery removes old labelled containers before accepting new work.
-    uvicorn.run(app, uds=str(socket_path), log_level="warning")
+    try:
+        uvicorn.run(app, uds=str(socket_path), log_level="warning")
+    finally:
+        for job in list(jobs.values()):
+            job["cancel"].set()
+        for job in list(jobs.values()):
+            job["thread"].join(timeout=30)
+        backend.recover()
 
 
 if __name__ == "__main__":

@@ -223,6 +223,7 @@ CATEGORIES = (
     "Social/API",
 )
 ACTION_ID = ContextVar("action_id", default="")
+GITHUB_LEASE = ContextVar("github_lease", default=None)
 DEADLINE = ContextVar("tool_deadline", default=None)
 
 
@@ -499,12 +500,89 @@ class ToolRegistry:
             method,
             "https://api.github.com/repos/" + repo + endpoint,
             {
-                "Authorization": "Bearer " + self.credentials.get("github_token", TOOL_CONTEXT.get()),
+                "Authorization": "Bearer " + self._github_token(),
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
             },
             payload,
         )
+
+    def _github_token(self):
+        if not (self.settings.github_app_id and self.settings.github_installation_id):
+            return self.credentials.get("github_token", TOOL_CONTEXT.get())
+        lease = GITHUB_LEASE.get()
+        if lease:
+            return lease
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import padding
+
+        def encode(value):
+            return base64.urlsafe_b64encode(value).rstrip(b"=")
+
+        issued = int(time.time())
+        header = encode(b'{"alg":"RS256","typ":"JWT"}')
+        payload = encode(
+            json.dumps({"iat": issued - 60, "exp": issued + 540, "iss": self.settings.github_app_id}).encode()
+        )
+        unsigned = header + b"." + payload
+        key = serialization.load_pem_private_key(
+            self.credentials.get("github_app_private_key", TOOL_CONTEXT.get()).encode(), password=None
+        )
+        jwt = (unsigned + b"." + encode(key.sign(unsigned, padding.PKCS1v15(), hashes.SHA256()))).decode()
+        self.credentials._leased_secrets.add(jwt)
+        tool = TOOL_CONTEXT.get()
+        permissions = {"contents": "read"}
+        if tool in {
+            "github_write_file",
+            "github_create_branch",
+            "github_merge_pr",
+            "github_dispatch_workflow",
+        }:
+            permissions["contents"] = "write"
+        if tool in {"github_open_pr", "github_merge_pr"}:
+            permissions["pull_requests"] = "write"
+        if tool == "github_pr_status":
+            permissions.update(pull_requests="read", checks="read")
+        if tool == "github_merge_pr":
+            permissions["checks"] = "read"
+        if tool in {"github_dispatch_workflow", "github_workflow_status"}:
+            permissions["actions"] = "write" if tool == "github_dispatch_workflow" else "read"
+        if tool in {"github_create_issue", "github_list_issues"}:
+            permissions["issues"] = "write" if tool == "github_create_issue" else "read"
+        installation = self.settings.github_installation_id
+        if not installation.isdecimal():
+            raise ToolError("Invalid GitHub installation ID")
+        data = self._request(
+            "POST",
+            f"https://api.github.com/app/installations/{installation}/access_tokens",
+            {"Authorization": "Bearer " + jwt, "Accept": "application/vnd.github+json"},
+            {"repositories": [self.settings.github_repo.split("/")[1]], "permissions": permissions},
+        )
+        token = data["token"]
+        self.credentials._leased_secrets.add(token)
+        GITHUB_LEASE.set(token)
+        return token
+
+    def _release_github_lease(self):
+        token = GITHUB_LEASE.get()
+        if token:
+            try:
+                response = httpx.delete(
+                    "https://api.github.com/installation/token",
+                    headers={"Authorization": "Bearer " + token},
+                    timeout=5,
+                    trust_env=False,
+                )
+                if response.status_code != 204:
+                    self.db.event(
+                        None,
+                        "credential_lease",
+                        "GitHub token revocation unconfirmed; provider expiry applies",
+                    )
+            except Exception:
+                self.db.event(
+                    None, "credential_lease", "GitHub token revocation unconfirmed; provider expiry applies"
+                )
 
     @staticmethod
     def _branch(branch):
@@ -749,6 +827,8 @@ class ToolRegistry:
                 raise ToolError("Sandbox source currently supports UTF-8 files only") from None
             if len(json.dumps(files).encode()) > 700000:
                 raise ToolError("Repository snapshot exceeds sandbox input limit")
+        if self.credentials.redact(files) != files:
+            raise ToolError("Repository snapshot contains a configured credential")
         job = Job(
             id=ACTION_ID.get(),
             files=files,
@@ -807,8 +887,10 @@ class ToolRegistry:
             ref = self._github("GET", "/git/ref/heads/" + quote(default, safe=""))
             if ref["object"]["sha"] != args["sha"]:
                 raise ToolError("Default branch changed; obtain a fresh exact approval")
-            # Dispatch a commit SHA, never a moving branch. Deployment credentials stay in the configured workflow.
-            self._github("POST", endpoint + "/dispatches", {"ref": args["sha"]})
+            # workflow_dispatch accepts branch/tag refs. Bind a new immutable-by-contract tag to the approved SHA.
+            tag = "agent4good-deploy/" + args["sha"]
+            self._github("POST", "/git/refs", {"ref": "refs/tags/" + tag, "sha": args["sha"]})
+            self._github("POST", endpoint + "/dispatches", {"ref": tag})
             return {"accepted": True, "workflow": workflow, "sha": args["sha"]}
         if not re.fullmatch(r"[1-9][0-9]{0,9}", args["number"]):
             raise ToolError("Invalid pull request number")
@@ -934,6 +1016,7 @@ class ToolRegistry:
             )
         action_token = ACTION_ID.set(hashlib.sha256((task_id + ":" + call_id).encode()).hexdigest())
         token = DEADLINE.set(time.monotonic() + spec.timeout_seconds)
+        github_lease_token = GITHUB_LEASE.set(None)
         try:
             with self.db.connect() as conn:
                 conn.execute("BEGIN IMMEDIATE")
@@ -982,5 +1065,7 @@ class ToolRegistry:
             self.db.event(task_id, "tool_failed", name + ": execution incomplete; inspect receipt")
             raise
         finally:
+            self._release_github_lease()
+            GITHUB_LEASE.reset(github_lease_token)
             DEADLINE.reset(token)
             ACTION_ID.reset(action_token)

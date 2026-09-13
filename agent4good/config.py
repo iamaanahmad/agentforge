@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     task_timeout_seconds: int = Field(3600, ge=60, le=86400)
     max_daily_runs: int = Field(30, ge=1, le=1000)
     github_token: str = Field("", repr=False, exclude=True)
+    github_app_id: str = ""
+    github_installation_id: str = ""
+    github_app_private_key: str = Field("", repr=False, exclude=True)
     github_repo: str = ""
     sandbox_socket: str = ""
     github_merge_checks: list[str] = []
