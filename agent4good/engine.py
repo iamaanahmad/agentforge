@@ -6,7 +6,8 @@ from datetime import datetime, timedelta, timezone
 
 from .catalog import agent_prompt
 from .db import now
-from .provider import ResponsesProvider
+from .provider import ProviderError
+from .model_router import ModelRouter
 from .tools import SPECS, ToolRegistry, ToolError, validate_arguments
 
 SYSTEM = """
@@ -29,7 +30,7 @@ class Engine:
         self.db, self.settings = db, settings
         self.journal = ExecutionJournal(db)
         self.registry = registry or ToolRegistry(settings, db)
-        self.provider = provider or ResponsesProvider(settings, self.registry.credentials)
+        self.provider = provider or ModelRouter(settings, self.registry.credentials, db)
 
     def claim(self):
         with self.db.connect() as conn:
@@ -180,14 +181,21 @@ class Engine:
             )
             token = TASK_CONTEXT.set(task_id)
             try:
-                response = self.provider.respond(
+                respond = getattr(self.provider, "respond", None)
+                prefix = ()
+                if isinstance(self.provider, ModelRouter):
+                    respond, prefix = self.provider.respond_task, (task_id,)
+                response = respond(
+                    *prefix,
                     self._redact(instructions),
                     self.registry.credentials.redact(
                         [{k: v for k, v in item.items() if k != "action_id"} for item in items]
                     ),
                     self.registry.definitions(),
                 )
-            except (httpx.TransportError, TimeoutError):
+            except (httpx.TransportError, TimeoutError, ProviderError) as exc:
+                if isinstance(exc, ProviderError) and not exc.retryable:
+                    raise
                 self.db.execute(
                     "UPDATE executions SET model_failures=model_failures+1 WHERE task_id=?", (task_id,)
                 )

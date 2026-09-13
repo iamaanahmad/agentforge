@@ -373,6 +373,12 @@ class ToolRegistry:
                 "description": "Model reasoning and tool calls. Set A4G_OPENAI_API_KEY on the server.",
             },
             {
+                "id": "anthropic",
+                "name": "Anthropic",
+                "configured": self.credentials.configured("anthropic_api_key"),
+                "description": "Claude Messages adapter. Select a model profile on the server.",
+            },
+            {
                 "id": "github",
                 "name": "GitHub",
                 "configured": self.credentials.configured("github_token") and bool(s.github_repo),

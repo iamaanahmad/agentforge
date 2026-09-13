@@ -84,7 +84,15 @@ class Database:
                 conn.execute("INSERT INTO policy_legacy SELECT id FROM approvals")
             if "attempts" not in {row["name"] for row in conn.execute("PRAGMA table_info(tool_runs)")}:
                 conn.execute("ALTER TABLE tool_runs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1")
-            conn.execute("PRAGMA user_version=4")
+            if "work_type" not in {row["name"] for row in conn.execute("PRAGMA table_info(tasks)")}:
+                conn.execute("ALTER TABLE tasks ADD COLUMN work_type TEXT")
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS model_routes (task_id TEXT PRIMARY KEY REFERENCES tasks(id), profile TEXT NOT NULL)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS model_calls (id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), reserved_tokens INTEGER NOT NULL, reserved_micro_usd INTEGER NOT NULL, status TEXT NOT NULL, usage TEXT, created_at TEXT NOT NULL)"
+            )
+            conn.execute("PRAGMA user_version=5")
             for key, value in {"name": "Agent4Good", "goal": "", "autonomy": "supervised"}.items():
                 conn.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, value))
 
@@ -142,10 +150,14 @@ class Database:
     def task(self, task_id):
         return self.one("SELECT * FROM tasks WHERE id=?", (task_id,))
 
-    def create_task(self, title, prompt, agent, start=False, conn=None):
+    def create_task(self, title, prompt, agent, start=False, conn=None, work_type=None):
+        from .model_config import WORK_TYPES
+
+        if work_type is not None and work_type not in WORK_TYPES:
+            raise ValueError("Unsupported work type")
         task_id, ts = uid("task"), now()
-        args = (task_id, title, prompt, agent, "queued" if start else "draft", ts, ts)
-        sql = "INSERT INTO tasks(id,title,prompt,agent,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)"
+        args = (task_id, title, prompt, agent, "queued" if start else "draft", ts, ts, work_type)
+        sql = "INSERT INTO tasks(id,title,prompt,agent,status,created_at,updated_at,work_type) VALUES (?,?,?,?,?,?,?,?)"
         if conn:
             conn.execute(sql, args)
         else:

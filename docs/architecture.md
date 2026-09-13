@@ -5,7 +5,7 @@ Agent4Good is a single-owner service with two processes and one persistent SQLit
 - `app.py` authenticates the owner, serves the dashboard, and exposes JSON endpoints.
 - `worker.py` holds an OS file lock, recovers interrupted work, checks schedules, and claims one queued task at a time.
 - `engine.py` runs the model/tool loop. Task context, pending calls, approvals, and tool receipts survive process restarts.
-- `provider.py` calls the OpenAI Responses API at a fixed endpoint. It never accepts a model-selected API host.
+- `provider.py` implements OpenAI Responses and Anthropic Messages at fixed endpoints. `model_router.py` pins owner-selected profiles and reserves call budgets durably. Neither accepts a model-selected API host.
 - `tools.py` owns typed tool contracts, discovery, adapters, approval enforcement, rate limits, and durable execution receipts.
 - `catalog.py` and `playbooks/` supply the nine original role definitions.
 - `db.py` owns schema initialization and short SQLite transactions. Network requests happen outside database transactions.

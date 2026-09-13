@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Literal
 from pydantic import Field, model_validator
+from .model_config import ModelProfile, WorkType
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,7 +20,12 @@ class Settings(BaseSettings):
     allowed_hosts: list[str] = ["localhost", "127.0.0.1"]
     public_origin: str = "http://localhost:8000"
     openai_api_key: str = Field("", repr=False, exclude=True)
+    anthropic_api_key: str = Field("", repr=False, exclude=True)
     model: str = "gpt-5.4-mini"
+    model_profiles: dict[str, ModelProfile] = Field(default_factory=dict)
+    model_routes: dict[WorkType, str] = Field(default_factory=dict)
+    max_task_model_reserved_tokens: int = Field(2000000, ge=1024, le=50000000)
+    max_task_model_cost_usd: float | None = Field(None, gt=0, le=10000, allow_inf_nan=False)
     max_output_tokens: int = Field(4096, ge=256, le=16000)
     max_steps: int = Field(12, ge=1, le=30)
     max_recoveries: int = Field(3, ge=0, le=20)
@@ -44,4 +50,6 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Production requires an HTTPS public origin; local development may disable secure cookies"
             )
+        if any(name not in self.model_profiles for name in self.model_routes.values()):
+            raise ValueError("Every model route must name a configured profile")
         return self

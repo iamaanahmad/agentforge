@@ -14,6 +14,7 @@ TASK_CONTEXT = ContextVar("credential_task", default=None)
 TOOL_CONTEXT = ContextVar("credential_tool", default=None)
 PURPOSES = {
     "openai_api_key": {"model"},
+    "anthropic_api_key": {"model"},
     "github_token": {
         "github_read_file",
         "github_list_issues",
