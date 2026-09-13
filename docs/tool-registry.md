@@ -80,3 +80,9 @@ No email was sent, and no production deployment or live model completion is clai
 
 `browser_run` uses the Browser category with mandatory exact approvals and durable receipts.
 Its offline renderer, HTTPS relay, and session limits are documented in [Browser control](browser-control.md).
+
+## Layered memory
+
+`memory_search` reads scoped records within the context budget.
+`memory_store` saves sourced records or explicit corrections with exact approval.
+The original named-note tools remain available. See [layered memory](layered-memory.md).

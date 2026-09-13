@@ -95,6 +95,24 @@ class ExecutionJournal:
                 (revision, final_text, "verifying" if final_text is not None else "executing", task_id),
             )
 
+            from .memory import runtime_record
+
+            observations = [i for i in items if i.get("type") == "function_call_output"]
+            snapshot = (
+                task["title"]
+                + "\n"
+                + task["prompt"][:1000]
+                + "\n"
+                + json.dumps(
+                    {
+                        "revision": revision,
+                        "pending_tools": [c["name"] for c in pending],
+                        "last_observation": observations[-1].get("output", "")[:2000] if observations else "",
+                    }
+                )
+            )
+            runtime_record(conn, task_id, "working", snapshot)
+
     def before(self, task_id, call):
         step = self.db.one(
             "SELECT * FROM plan_steps WHERE task_id=? AND action_id=?", (task_id, call["action_id"])
@@ -128,7 +146,7 @@ class ExecutionJournal:
             if json.loads(task["pending"]):
                 raise RuntimeError("Verification found pending actions")
             if conn.execute(
-                "SELECT 1 FROM tool_runs WHERE task_id=? AND status!='done' AND tool NOT IN ('memory_read','web_fetch','web_search','github_read_file','github_list_issues')",
+                "SELECT 1 FROM tool_runs WHERE task_id=? AND status!='done' AND tool NOT IN ('memory_read','memory_search','web_fetch','web_search','github_read_file','github_list_issues')",
                 (task_id,),
             ).fetchone():
                 raise RuntimeError("Verification found an ambiguous write; inspect before retrying")
@@ -153,5 +171,13 @@ class ExecutionJournal:
                     ),
                     task_id,
                 ),
+            )
+            from .memory import runtime_record
+
+            runtime_record(
+                conn,
+                task_id,
+                "episodic",
+                task["title"] + "\nExecution completed; outcome is not independently verified.\n" + result,
             )
         self.db.event(task_id, "completed", "Execution checks passed; review result and saved evidence")

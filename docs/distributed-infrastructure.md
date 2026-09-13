@@ -106,7 +106,7 @@ Never put credentials in tasks, logs, URLs shown to users, or source control.
 The application redacts configured infrastructure credentials from saved model output and errors.
 The services still share one trusted owner boundary. This is not a sandbox for hostile generated code.
 
-## Migrate SQLite schema 5
+## Migrate SQLite schema 5, 6, or 7
 
 Stop the source web service and worker before migrating. Do not move real production data without owner authorization.
 Keep the original volume unchanged. Start only PostgreSQL and object storage at the empty destination.
@@ -118,7 +118,7 @@ uv run python scripts/infrastructure.py migrate-sqlite /private/source.sqlite3 /
 ```
 
 The command takes a consistent private SQLite backup and checks database integrity and foreign keys.
-It accepts schema 5 only. Upgrade an older source through the supported SQLite release before migration.
+It accepts schema 5, 6, or 7. Upgrade an older source through the supported SQLite release before migration.
 It copies all application tables, compares every restored row, and restores database identity sequences.
 The target must be empty except untouched default settings and policy. Any conflict rolls back the database copy.
 Saved approvals, ciphertext, notes, tasks, model routes, receipts, and historical artifacts remain available.
@@ -183,3 +183,6 @@ The `Distributed infrastructure` GitHub workflow runs real PostgreSQL and MinIO 
 It separately starts the full Compose stack with two workers, private secret mounts, health probes, and backup restoration.
 See [PostgreSQL locking](https://www.postgresql.org/docs/current/explicit-locking.html) and
 [transaction behavior](https://www.psycopg.org/psycopg3/docs/basic/transactions.html) for the underlying storage contracts.
+
+Layered memory uses PostgreSQL schema 3 and portable backup format 3.
+Older backup formats 1 and 2 remain readable. See [memory migration](layered-memory.md).

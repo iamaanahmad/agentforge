@@ -13,7 +13,7 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 - Owner-controlled manual, supervised, and autonomous modes. Scheduled autonomous work can run without an open browser.
 - Exact approval for every external write. The owner sees the recipient, message, branch, file content, or issue before execution.
 - Persistent tool receipts. Duplicate call IDs reuse a completed result. Interrupted or ambiguous calls fail for inspection, never silently retry.
-- Saved Markdown/text/code artifacts, shared memory, a task activity trail, and consistent SQLite backup tooling.
+- Saved Markdown/text/code artifacts, [layered memory with bounded retrieval](docs/layered-memory.md), a task activity trail, and consistent SQLite backup tooling.
 - Optional GitHub, Brave Search, HTTPS website reading, and Resend adapters. Missing credentials remove tools from the model's available tool list.
 - Private owner login, expiring HttpOnly sessions, CSRF and origin checks, login throttling, request size limits, host checks, and a strict content security policy.
 - Docker deployment files, a separate supervised worker, health probes, automated tests, and GitHub CI.
@@ -28,6 +28,7 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 | Support and sales | Supplied-ticket analysis, exact approved Resend email sends | Inbound inbox sync, CRM, bulk sequences, LinkedIn |
 | Paid growth and creative | Campaign plans, copy and creative briefs | Ad activation, image/video generation, real budget management |
 | Browser work | Exact-approved isolated Chromium journeys, forms, file transfer, tabs, screenshots, encrypted task sessions | Unrestricted browsing, challenge bypass, cross-task session sharing, production browser hosting |
+| Memory | Private working snapshots, past-run episodes, sourced facts, bounded lexical retrieval, versioned corrections and quarantine | Embedding search, automatic document ingestion, multi-user memory |
 | Agent operations | Nine executable specialist roles, bounded child workers, durable messages and contexts, tasks, schedules, memory, approvals | Plugins/MCP, multi-tenant SaaS, SSO |
 
 Evidence for the included paths: [API checks](tests/test_app.py), [engine checks](tests/test_engine.py),

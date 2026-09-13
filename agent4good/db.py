@@ -108,7 +108,10 @@ class Database:
             from .coordination import initialize
 
             initialize(conn)
-            conn.execute("PRAGMA user_version=6")
+            from .memory import initialize as initialize_memory
+
+            initialize_memory(conn)
+            conn.execute("PRAGMA user_version=7")
             for key, value in {"name": "Agent4Good", "goal": "", "autonomy": "supervised"}.items():
                 conn.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, value))
 
