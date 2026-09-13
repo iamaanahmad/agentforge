@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     max_daily_runs: int = Field(30, ge=1, le=1000)
     github_token: str = Field("", repr=False, exclude=True)
     github_repo: str = ""
+    sandbox_socket: str = ""
+    github_merge_checks: list[str] = []
+    github_deploy_workflows: list[str] = []
     resend_api_key: str = Field("", repr=False, exclude=True)
     mail_from: str = ""
     search_api_key: str = Field("", repr=False, exclude=True)
