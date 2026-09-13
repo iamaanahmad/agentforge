@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent4Good vs AutoGPT: workspace or workflow builder?</title>
+  <meta name="description" content="Compare Agent4Good's single-owner workspace with AutoGPT's workflow platform. See setup, controls, saved work, and the evidence behind each scope.">
+  <meta property="og:title" content="Agent4Good vs AutoGPT: workspace or workflow builder?">
+  <meta property="og:description" content="A focused comparison of setup, controls, and saved work, with sources and clear release limits.">
+  <meta property="og:type" content="article">
+  <link rel="canonical" href="/compare/autogpt">
+  <link rel="icon" href="/static/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/compare/comparison.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to comparison</a>
+<header class="masthead"><a class="brand" href="/"><img src="/static/mark.svg" width="32" height="32" alt="">Agent4Good<span>.</span></a><a href="/">Owner workspace</a></header>
+<main id="main">
+  <section class="hero">
+    <div><p class="section-label">Agent4Good vs AutoGPT</p><h1>Workspace or<br>workflow builder?</h1><p class="intro">Agent4Good puts missions, decisions, and saved work in one workspace for a single owner.</p><a class="primary" href="#setup">Check setup requirements <span aria-hidden="true">↗</span></a></div>
+    <aside class="orientation" aria-label="The central difference"><img src="/static/mark.svg" width="48" height="48" alt="Agent4Good logo"><p class="orientation-title">A home for<br>the work you direct.</p><div class="work-path"><span>Mission</span><span>Decision</span><span>Saved result</span></div><p>AutoGPT centers on building workflows and running agents from its marketplace. <a href="#sources">Sources ↓</a></p></aside>
+  </section>
+  <section class="comparison" aria-labelledby="comparison-heading">
+    <div class="section-head"><h2 id="comparison-heading">Choose how you want to work.</h2><p>Compare supported capabilities with documented product scope.</p></div>
+    <table>
+      <caption class="sr-only">Agent4Good capabilities and AutoGPT platform scope</caption>
+      <thead><tr><th scope="col">Your decision</th><th scope="col">Agent4Good</th><th scope="col">AutoGPT</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Starting point</th><td>One owner workspace for missions, tasks, approvals, and memory.</td><td>A visual agent builder, workflow management, and a marketplace of ready-made agents.</td></tr>
+        <tr><th scope="row">Setup</th><td>Run Python locally, or use the supplied Docker deployment files.</td><td>Hosted access or self-hosting. Its setup guide covers Docker, Node.js, and Git.</td></tr>
+        <tr><th scope="row">Directing work</th><td>Bounded specialist workers can run child tasks and return saved results.</td><td>Connect blocks into workflows, including AI models, external services, and conditional logic.</td></tr>
+        <tr><th scope="row">Controls</th><td>Exact approvals bind external writes to reviewed content and scope.</td><td>Builder and deployment controls manage agent configuration and lifecycle.</td></tr>
+        <tr><th scope="row">Returning to work</th><td>Saved checkpoints resume safe steps. Uncertain writes wait for inspection.</td><td>The platform documents ongoing agent operation, interaction, and performance monitoring.</td></tr>
+        <tr><th scope="row">Connected tools</th><td>Configured adapters cover GitHub, Brave search, HTTPS reading, and approved Resend messages.</td><td>Workflow blocks connect external services, data tools, and model providers.</td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section class="fit" aria-labelledby="fit-heading">
+    <div itemscope itemtype="https://schema.org/SoftwareApplication"><meta itemprop="applicationCategory" content="BusinessApplication"><meta itemprop="operatingSystem" content="Self-hosted Python or Docker"><h2 id="fit-heading">Why choose <span itemprop="name">Agent4Good</span>?</h2><p itemprop="description">Keep your missions, approval decisions, and saved results together in a workspace you host.</p><p>Choose it when you want to direct work, inspect actions, and return to the same task history.</p></div>
+    <div><h2>When AutoGPT fits</h2><p>Choose AutoGPT when its visual workflow builder, agent marketplace, or hosted access matches your needs.</p><p>Agent4Good is a single-owner release candidate. Local use and automated tests support its features; tests use scripted models.</p><p>Live model completion and production operation remain unverified. Pricing and licensing are not established in this comparison.</p></div>
+  </section>
+  <section class="setup" id="setup" aria-labelledby="setup-heading"><div><p class="section-label">Before you install</p><h2 id="setup-heading">Bring your own host<br>and model account.</h2></div><div><p>Agent4Good requires repository access, Python 3.12 or 3.13 with uv, and your own model credentials.</p><p>The repository is currently private. Existing collaborators can use the <a href="https://github.com/iamaanahmad/Agent4Good#run-locally">repository setup guide</a>. Other readers need access from the repository owner first.</p><p>For production, configure HTTPS, secrets, backups, and a live acceptance test. No public hosted demo is confirmed.</p></div></section>
+  <section class="questions" itemscope itemtype="https://schema.org/FAQPage" aria-labelledby="questions-heading"><h2 id="questions-heading">Two common questions</h2>
+    <div itemscope itemprop="mainEntity" itemtype="https://schema.org/Question"><h3 itemprop="name">Can I self-host either product?</h3><div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer"><p itemprop="text">Both document self-hosting. Agent4Good supplies Python and Docker setup; AutoGPT publishes its own self-hosting guide.</p></div></div>
+    <div itemscope itemprop="mainEntity" itemtype="https://schema.org/Question"><h3 itemprop="name">Is Agent4Good a drop-in AutoGPT replacement?</h3><div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer"><p itemprop="text">No. They organize work differently. This comparison does not establish workflow, integration, or data migration compatibility.</p></div></div>
+  </section>
+  <section class="sources" id="sources" aria-labelledby="sources-heading"><h2 id="sources-heading">Sources and evidence</h2><p>Reviewed September 13, 2026. AutoGPT statements describe its documentation, not our hands-on verification.</p><ul><li><a href="https://agpt.co/docs/platform/">AutoGPT platform overview</a> and <a href="https://agpt.co/docs/platform/self-hosting/getting-started/">self-hosting guide</a>.</li><li>Agent4Good: <a href="https://github.com/iamaanahmad/Agent4Good#what-works">feature and evidence summary</a>, <a href="https://github.com/iamaanahmad/Agent4Good/blob/main/docs/durable-execution.md">recovery contract</a>, and <a href="https://github.com/iamaanahmad/Agent4Good/blob/main/docs/action-policies.md">action policies</a>. Repository access is required.</li></ul></section>
+</main>
+<footer><span>Agent4Good <span class="separator">/</span> Self-hosted · v0.1</span><a class="tin-credit" href="https://tin.computer"><span aria-hidden="true"></span>Growth by Tin</a></footer>
+</body>
+</html>
