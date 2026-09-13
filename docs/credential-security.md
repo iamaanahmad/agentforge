@@ -36,7 +36,7 @@ Keep the same values during recovery. Never reuse one database for another envir
 6. Import needed adapter credentials similarly, then remove their old environment values.
 7. Restart both services. Confirm `/api/readiness` reports `credential_storage: encrypted-vault` after login.
 
-Supported names: `openai_api_key`, `github_token`, `search_api_key`, `resend_api_key`, and `webhook_secret`.
+Supported names include `bedrock_credentials`, `vertex_credentials`, `dataforseo_credentials`, `anthropic_api_key`, `openai_api_key`, `github_token`, `search_api_key`, `resend_api_key`, and `webhook_secret`.
 Use `--purpose github_read_file --purpose github_list_issues` to restrict a GitHub credential to reads.
 Repository, sender, and host configuration remain server-owned. Fine-grained provider scopes remain necessary.
 Use `--stdin` only with a private file or secret manager pipe. Never put values in command arguments or shell history.

@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     public_origin: str = "http://localhost:8000"
     openai_api_key: str = Field("", repr=False, exclude=True)
     anthropic_api_key: str = Field("", repr=False, exclude=True)
+    bedrock_credentials: str = Field("", repr=False, exclude=True)
+    vertex_credentials: str = Field("", repr=False, exclude=True)
+    dataforseo_credentials: str = Field("", repr=False, exclude=True)
     model: str = "gpt-5.4-mini"
     model_profiles: dict[str, ModelProfile] = Field(default_factory=dict)
     model_routes: dict[WorkType, str] = Field(default_factory=dict)

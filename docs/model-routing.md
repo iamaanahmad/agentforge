@@ -1,7 +1,7 @@
 # Model routing
 
-Agent4Good implements OpenAI Responses and Anthropic Messages adapters.
-Both send real HTTPS requests when their server credential is available.
+Agent4Good implements OpenAI Responses, Anthropic Messages, AWS Bedrock Converse, and Google Vertex AI Gemini adapters.
+These send real HTTPS requests when their server credential is available.
 Tests use scripted HTTP responses and do not establish account or model availability.
 
 ## Configure routes
@@ -45,7 +45,7 @@ One task retains one profile throughout execution.
 
 ## Contract and capabilities
 
-Both adapters normalize assistant text, local function calls, tool results, usage, and errors.
+The adapters normalize assistant text, local function calls, tool results, usage, and errors.
 They support sequential client-side tools. Server-side tools, streaming, and vision are unavailable.
 Profiles declare `tools` and `structured_output` support; declarations do not verify model access.
 The runtime needs tools, so a profile with `tools=false` cannot start a task.
@@ -114,3 +114,5 @@ Retain the task as a labeled test record. A text result alone does not validate 
 Protocol references: [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling),
 [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs),
 and [Anthropic client tools](https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls).
+
+Cloud credential setup, model scope, and reusable skills: [cloud models and skills](cloud-models-and-skills.md).

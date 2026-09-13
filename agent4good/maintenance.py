@@ -60,7 +60,14 @@ def configuration():
                     "message": "Check the private keyring format, permissions and location",
                 }
             )
-    if not settings.openai_api_key and not settings.anthropic_api_key:
+    if not any(
+        (
+            settings.openai_api_key,
+            settings.anthropic_api_key,
+            settings.bedrock_credentials,
+            settings.vertex_credentials,
+        )
+    ):
         warnings.append("No environment model key; check vault and /api/v1/readiness before starting work")
     for name in ("browser_socket", "sandbox_socket"):
         path = getattr(settings, name)

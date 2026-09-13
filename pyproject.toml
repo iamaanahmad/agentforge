@@ -12,6 +12,7 @@ dependencies = [
     "cryptography>=46,<47",
     "psycopg[binary]>=3.2,<4",
     "boto3>=1.35,<2",
+    "google-auth[requests]>=2.40,<3",
 ]
 [project.scripts]
 a4g = "agent4good.cli:main"

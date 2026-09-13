@@ -221,7 +221,27 @@ INTERNAL_TOOLS.extend(
     ]
 )
 
+INTERNAL_TOOLS.append(
+    function(
+        "skill_read",
+        "Read a versioned packaged workflow; grants no permissions.",
+        {"name": "Packaged skill ID"},
+    )
+)
+TOOL_DEFINITIONS.append(
+    function(
+        "dataforseo_search_volume",
+        "Paid DataForSEO keyword volumes; exact owner approval required.",
+        {
+            "keywords": "JSON array of 1 to 20 keyword strings",
+            "location_code": "Google Ads location code",
+            "language_code": "Two-letter language code",
+        },
+    )
+)
+
 MUTATING = {
+    "dataforseo_search_volume",
     "browser_run",
     "sandbox_run",
     "github_merge_pr",
@@ -257,6 +277,10 @@ STRING = {"type": "string", "maxLength": 100000}
 NULLABLE = {"type": ["string", "null"], "maxLength": 100000}
 INTEGER = {"type": "integer"}
 OUTPUTS = {
+    "skill_read": object_schema(name=STRING, version=STRING, instructions=STRING),
+    "dataforseo_search_volume": object_schema(
+        results={"type": "array", "maxItems": 20}, untrusted_source={"const": True}
+    ),
     **{
         name: object_schema(data={"type": "object"})
         for name in (
@@ -380,6 +404,8 @@ def build_specs():
             category, auth = "GitHub", ("github_token", "github_repo")
         elif name == "send_email":
             category, auth = "Email", ("resend_api_key", "mail_from")
+        elif name == "dataforseo_search_volume":
+            category, auth = "Web Search", ("dataforseo_credentials",)
         elif name == "web_search":
             category, auth = "Web Search", ("search_api_key",)
         elif name == "web_fetch":
@@ -393,6 +419,14 @@ def build_specs():
         schema = deepcopy(definition["parameters"])
         for field in schema["properties"].values():
             field["maxLength"] = 100000
+        if name == "skill_read":
+            from .skills import CATALOG
+
+            schema["properties"]["name"]["enum"] = list(CATALOG)
+        if name == "dataforseo_search_volume":
+            schema["properties"]["keywords"]["maxLength"] = 2200
+            schema["properties"]["location_code"]["pattern"] = "^[0-9]{1,7}$"
+            schema["properties"]["language_code"]["pattern"] = "^[a-z]{2}$"
         if name == "sandbox_run":
             schema["properties"]["ref"]["pattern"] = "^[a-f0-9]{40}$"
             schema["properties"]["script"]["maxLength"] = 20000
@@ -438,13 +472,17 @@ def build_specs():
                 "Web Search": (
                     ("owner-allowlisted public HTTPS hosts",)
                     if name == "web_fetch"
+                    else ("fixed DataForSEO endpoint; paid request with exact approval",)
+                    if name == "dataforseo_search_volume"
                     else ("fixed Brave Search endpoint",)
                 ),
                 "Database": ("owner workspace notes only",),
                 "Filesystem": ("owner workspace text artifacts only; no host filesystem access",),
             }[category],
             action_class=(
-                "DEPLOYMENT"
+                "FINANCIAL"
+                if name == "dataforseo_search_volume"
+                else "DEPLOYMENT"
                 if name in {"github_merge_pr", "github_dispatch_workflow"}
                 else "EXTERNAL_COMMUNICATION"
                 if name in {"send_email", "github_create_issue", "github_open_pr"}
@@ -582,6 +620,24 @@ class ToolRegistry:
     def integrations(self):
         s = self.settings
         return [
+            {
+                "id": "bedrock",
+                "name": "AWS Bedrock",
+                "configured": self.credentials.configured("bedrock_credentials"),
+                "description": "Converse text and tool models. Configure a region and model profile.",
+            },
+            {
+                "id": "vertex",
+                "name": "Google Vertex AI",
+                "configured": self.credentials.configured("vertex_credentials"),
+                "description": "Gemini text and tool models. Configure a Google Cloud project and model profile.",
+            },
+            {
+                "id": "dataforseo",
+                "name": "DataForSEO",
+                "configured": self.credentials.configured("dataforseo_credentials"),
+                "description": "Paid keyword volume queries with exact approval. No backlink adapter.",
+            },
             {
                 "id": "openai",
                 "name": "OpenAI",
@@ -834,6 +890,44 @@ class ToolRegistry:
                 return {"url": args["url"], "text": text[:24000], "untrusted_source": True}
             finally:
                 conn.close()
+        if name == "skill_read":
+            from .skills import read_skill
+
+            return read_skill(args["name"])
+        if name == "dataforseo_search_volume":
+            keywords = json.loads(args["keywords"])
+            if (
+                not isinstance(keywords, list)
+                or not 1 <= len(keywords) <= 20
+                or any(not isinstance(k, str) or not k.strip() or len(k) > 80 for k in keywords)
+            ):
+                raise ToolError("Provide 1 to 20 keywords, each at most 80 characters")
+            secret = json.loads(self.credentials.get("dataforseo_credentials", name))
+            if not isinstance(secret, dict) or not all(
+                isinstance(secret.get(k), str) and secret[k] for k in ("login", "password")
+            ):
+                raise ToolError("Configure DataForSEO login and password")
+            auth = base64.b64encode((secret["login"] + ":" + secret["password"]).encode()).decode()
+            self.credentials._leased_secrets.add(auth)
+            data = self._request(
+                "POST",
+                "https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live",
+                {"Authorization": "Basic " + auth},
+                [
+                    {
+                        "keywords": keywords,
+                        "location_code": int(args["location_code"]),
+                        "language_code": args["language_code"],
+                    }
+                ],
+            )
+            tasks = data.get("tasks", [])
+            if data.get("status_code") != 20000 or len(tasks) != 1 or tasks[0].get("status_code") != 20000:
+                raise ToolError("DataForSEO did not complete the paid request; inspect before retrying")
+            results = tasks[0].get("result")
+            if not isinstance(results, list) or len(results) > 20:
+                raise ToolError("DataForSEO returned invalid results")
+            return {"results": results, "untrusted_source": True}
         if name == "web_search":
             data = self._request(
                 "GET",
