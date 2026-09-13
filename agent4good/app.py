@@ -804,6 +804,10 @@ def create_app(settings=None):
 
     app.mount("/static", StaticFiles(directory=static), name="static")
 
+    @app.get("/compare/autogpt")
+    def autogpt_comparison():
+        return FileResponse(static / "compare" / "autogpt.html")
+
     @app.get("/")
     def index():
         return FileResponse(static / "index.html")
