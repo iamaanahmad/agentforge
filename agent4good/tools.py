@@ -44,6 +44,11 @@ def function(name, description, fields):
 
 INTERNAL_TOOLS = [
     function(
+        "quality_inspect",
+        "Inspect one owner-defined quality check against the frozen candidate. Assigned independent reviewers only.",
+        {"check_id": "Exact quality check ID"},
+    ),
+    function(
         "schedule_create",
         "Create bounded future work only under an explicit schedule_create allow policy. request is JSON matching the documented ScheduleInput. No nested or mission scheduling.",
         {
@@ -254,7 +259,14 @@ INTEGER = {"type": "integer"}
 OUTPUTS = {
     **{
         name: object_schema(data={"type": "object"})
-        for name in ("worker_spawn", "worker_message", "worker_context", "worker_results", "worker_wait")
+        for name in (
+            "worker_spawn",
+            "worker_message",
+            "worker_context",
+            "worker_results",
+            "worker_wait",
+            "quality_inspect",
+        )
     },
     "browser_run": object_schema(
         status=STRING,
@@ -508,6 +520,12 @@ class ToolRegistry:
             row = self.db.one("SELECT tools FROM worker_nodes WHERE task_id=?", (task_id,))
             if row:
                 permitted = set(json.loads(row["tools"]))
+        if (
+            not task_id
+            or not self.db
+            or not self.db.one("SELECT 1 FROM quality_reviews WHERE task_id=?", (task_id,))
+        ):
+            permitted.discard("quality_inspect")
         return [
             {
                 "type": "function",
@@ -1223,8 +1241,12 @@ class ToolRegistry:
             from .missions import reserve_tool
 
             reserve_tool(conn, task_id)
-            if name.startswith(("worker_", "mission_", "schedule_")):
-                if name.startswith("schedule_"):
+            if name.startswith(("worker_", "mission_", "schedule_", "quality_")):
+                if name == "quality_inspect":
+                    from .quality import inspect
+
+                    result = inspect(conn, task_id, args["check_id"])
+                elif name.startswith("schedule_"):
                     from .scheduling import tool_dispatch
 
                     result = tool_dispatch(conn, self.db, self.settings, task_id, name, args)

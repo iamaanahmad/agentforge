@@ -16,6 +16,7 @@ from .artifacts import ObjectStore
 from .db import Database
 from .missions import TABLES as MISSION_TABLES
 from .scheduling import TABLES as SCHEDULE_TABLES
+from .quality import TABLES as QUALITY_TABLES
 
 TABLES = [
     "settings",
@@ -48,7 +49,7 @@ TABLES = [
 ]
 
 
-TABLES += MISSION_TABLES + SCHEDULE_TABLES
+TABLES += MISSION_TABLES + SCHEDULE_TABLES + QUALITY_TABLES
 
 
 def encode(value):
@@ -118,9 +119,9 @@ def migrate_sqlite(source, backup, db):
     fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     os.close(fd)
     with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as src, sqlite3.connect(backup) as dst:
-        if src.execute("PRAGMA user_version").fetchone()[0] not in {5, 6, 7, 8, 9}:
+        if src.execute("PRAGMA user_version").fetchone()[0] not in {5, 6, 7, 8, 9, 10}:
             raise ValueError(
-                "Migration supports SQLite schema 5, 6, 7, 8 or 9; upgrade the source offline first"
+                "Migration supports SQLite schema 5 through 10; upgrade the source offline first"
             )
         src.backup(dst)
         if (
@@ -140,7 +141,7 @@ def backup_postgres(db, destination):
         store = ObjectStore(db.config)
         for row in tables["artifact_objects"]:
             objects[row["object_key"]] = store.read(row["object_key"], row["sha256"])
-        document = {"version": 5, "tables": tables, "objects": objects}
+        document = {"version": 6, "tables": tables, "objects": objects}
         data = json.dumps(document, default=encode).encode()
     # Exclusive create prevents accidentally replacing a previous backup.
     fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -165,6 +166,10 @@ def restore_postgres(db, source):
         4: set(SCHEDULE_TABLES),
         5: set(),
     }.get(document.get("version"))
+    if missing is not None:
+        missing |= set(QUALITY_TABLES)
+    if document.get("version") == 6:
+        missing = set()
     if missing is None or set(document["tables"]) != expected - missing:
         raise ValueError("Unsupported backup format")
     document["tables"].update({table: [] for table in missing})

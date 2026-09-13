@@ -178,3 +178,9 @@ Browser setup, supported actions, network limits, and recovery: [Browser control
 [First-class missions](docs/missions.md) turn an objective into dependent worker tasks. Mission success requires evidence against original criteria.
 
 Scheduling behavior, APIs, migration, and dispatch guarantees: [dependency-aware scheduling](docs/scheduling.md).
+
+## Independent quality checks
+
+Critical tasks can require separate critic and verifier workers against owner-defined evidence checks.
+Failed checks trigger bounded revisions; missing evidence cannot pass. Configure task contracts or server defaults through [the quality guide](docs/independent-quality.md).
+Existing tasks keep their prior behavior. Scripted acceptance proves runtime boundaries, not live model correctness.

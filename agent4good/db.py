@@ -117,7 +117,10 @@ class Database:
             from .scheduling import initialize as initialize_scheduling
 
             initialize_scheduling(conn)
-            conn.execute("PRAGMA user_version=9")
+            from .quality import initialize as initialize_quality
+
+            initialize_quality(conn)
+            conn.execute("PRAGMA user_version=10")
             for key, value in {"name": "Agent4Good", "goal": "", "autonomy": "supervised"}.items():
                 conn.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, value))
 
@@ -175,7 +178,7 @@ class Database:
     def task(self, task_id):
         return self.one("SELECT * FROM tasks WHERE id=?", (task_id,))
 
-    def create_task(self, title, prompt, agent, start=False, conn=None, work_type=None):
+    def create_task(self, title, prompt, agent, start=False, conn=None, work_type=None, quality=None):
         from .model_config import WORK_TYPES
 
         if work_type is not None and work_type not in WORK_TYPES:
@@ -183,10 +186,20 @@ class Database:
         task_id, ts = uid("task"), now()
         args = (task_id, title, prompt, agent, "queued" if start else "draft", ts, ts, work_type)
         sql = "INSERT INTO tasks(id,title,prompt,agent,status,created_at,updated_at,work_type) VALUES (?,?,?,?,?,?,?,?)"
+
+        def insert(connection):
+            connection.execute(sql, args)
+            if quality is not None:
+                from .quality import configure
+
+                configure(connection, task_id, quality)
+
         if conn:
-            conn.execute(sql, args)
+            insert(conn)
         else:
-            self.execute(sql, args)
+            with self.connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                insert(connection)
             self.event(task_id, "created", "Task created" + (" and queued" if start else ""))
         return task_id
 

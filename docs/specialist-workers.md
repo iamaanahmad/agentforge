@@ -47,7 +47,7 @@ SQLite keeps one daemon per volume, with a bounded thread pool. Each runner has 
 
 Spawn, message and context mutations commit atomically with their tool receipts. Replaying a completed spawn reuses the same child. Restart recovery preserves transcripts, messages and contexts. `waiting_children` parents consume no execution slot. The scheduler wakes them when direct children are terminal.
 
-Cancelling a parent cancels unfinished descendants and rejects their pending approvals. A failed child cancels its descendants, while siblings continue. Existing model/read transport retry limits apply separately to each child. Failed external writes never automatically retry. A parent cannot finish while children remain active. Parent results still require human review; aggregation does not prove factual correctness.
+Cancelling a parent cancels unfinished descendants and rejects their pending approvals. A failed child cancels its descendants, while siblings continue. Existing model/read transport retry limits apply separately to each child. Failed external writes never automatically retry. A parent cannot finish while children remain active. Aggregation does not prove factual correctness. [Quality contracts](independent-quality.md) add separate critic and verifier workers with executable evidence checks.
 
 An already-running external request may finish after cancellation. Threads share a trusted Python process and kernel; they are not OS security sandboxes. Generated code remains confined to the optional coding broker.
 

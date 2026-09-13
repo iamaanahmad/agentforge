@@ -60,7 +60,7 @@ An accepted write after cancellation still records its receipt, without completi
 
 Final checks require nonempty final text, observed plan steps, no pending actions, and no ambiguous writes.
 These checks establish execution integrity. They do not independently validate factual accuracy or task success.
-A result can honestly report a failure or missing evidence. Independent critics belong to a separate capability.
+A result can honestly report a failure or missing evidence. Configured critical tasks also pass [independent quality gates](independent-quality.md) before completion.
 
 `tests/test_durable_execution.py` covers crash boundaries, changed model IDs, dependencies, concurrent runners,
 cancellation, recovery and retry budgets, deadlines, replanning, and completion checks.

@@ -22,6 +22,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .memory import MemoryInput, MemoryStore, MemoryError
 from .catalog import AGENTS
 from . import missions, scheduling
+from .quality import QualityInput
 from .scheduling import ScheduleInput
 from .config import Settings
 from .model_config import WorkType, task_work
@@ -51,6 +52,7 @@ class TaskInput(StrictInput):
     agent: str = "strategist"
     start: bool = False
     work_type: WorkType | None = None
+    quality: QualityInput | None = None
 
 
 class WebhookTask(StrictInput):
@@ -444,6 +446,7 @@ def create_app(settings=None):
             payload.agent,
             payload.start,
             work_type=payload.work_type,
+            quality=payload.quality.model_dump() if payload.quality else None,
         )
         return db.public_task(db.task(task_id))
 
@@ -458,6 +461,15 @@ def create_app(settings=None):
             "workers": db.all(
                 "SELECT task_id,parent_id,root_id,depth,priority FROM worker_nodes WHERE parent_id=? OR task_id=?",
                 (task_id, task_id),
+            ),
+            "quality_contract": db.one("SELECT * FROM quality_contracts WHERE task_id=?", (task_id,)),
+            "quality_rounds": db.all(
+                "SELECT id,attempt,digest,status,created_at FROM quality_rounds WHERE task_id=? ORDER BY attempt",
+                (task_id,),
+            ),
+            "quality_reviews": db.all(
+                "SELECT q.* FROM quality_reviews q JOIN quality_rounds r ON r.id=q.round_id WHERE r.task_id=? ORDER BY r.attempt,q.stage",
+                (task_id,),
             ),
             "execution": db.one("SELECT * FROM executions WHERE task_id=?", (task_id,)),
             "model_route": db.one("SELECT * FROM model_routes WHERE task_id=?", (task_id,)),
