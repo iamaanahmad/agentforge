@@ -366,6 +366,10 @@ def create_app(settings=None):
             "events": db.all("SELECT * FROM events WHERE task_id=? ORDER BY id", (task_id,)),
             "approvals": db.approval_list(task_id),
             "artifacts": db.all("SELECT id,name,created_at FROM artifacts WHERE task_id=?", (task_id,)),
+            "workers": db.all(
+                "SELECT task_id,parent_id,root_id,depth,priority FROM worker_nodes WHERE parent_id=? OR task_id=?",
+                (task_id, task_id),
+            ),
             "execution": db.one("SELECT * FROM executions WHERE task_id=?", (task_id,)),
             "model_route": db.one("SELECT * FROM model_routes WHERE task_id=?", (task_id,)),
             "model_calls": db.all(
@@ -396,7 +400,7 @@ def create_app(settings=None):
         with db.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             if not conn.execute(
-                "UPDATE tasks SET status='cancelled',updated_at=? WHERE id=? AND status IN ('draft','queued','running','waiting_approval')",
+                "UPDATE tasks SET status='cancelled',updated_at=? WHERE id=? AND status IN ('draft','queued','running','waiting_approval','waiting_children')",
                 (now(), task_id),
             ).rowcount:
                 raise HTTPException(409, "This task is already closed")
@@ -404,6 +408,9 @@ def create_app(settings=None):
                 "UPDATE approvals SET status='rejected',decided_at=? WHERE task_id=? AND status='pending'",
                 (now(), task_id),
             )
+            from .coordination import settle
+
+            settle(conn)
         db.event(
             task_id,
             "cancelled",
@@ -454,6 +461,9 @@ def create_app(settings=None):
                 "UPDATE tasks SET status=?,updated_at=? WHERE id=?",
                 ("queued" if approved else "cancelled", now(), approval["task_id"]),
             )
+            from .coordination import settle
+
+            settle(conn)
         db.event(
             approval["task_id"],
             "approved" if approved else "rejected",

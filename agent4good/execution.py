@@ -55,7 +55,13 @@ class ExecutionJournal:
                 fingerprint = hashlib.sha256(json.dumps([name, args], sort_keys=True).encode()).hexdigest()
                 # Writes with identical content denote the same action within one task.
                 # Repeated reads remain distinct observations.
-                key = fingerprint if SPECS[name].action_class != "READ" else call["call_id"]
+                key = (
+                    fingerprint
+                    if SPECS[name].action_class != "READ"
+                    and not (name == "worker_context" and args.get("operation") == "read")
+                    and name != "worker_wait"
+                    else call["call_id"]
+                )
                 existing = conn.execute(
                     "SELECT * FROM plan_steps WHERE task_id=? AND action_key=?", (task_id, key)
                 ).fetchone()
@@ -114,6 +120,11 @@ class ExecutionJournal:
             task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
             if task["status"] != "running":
                 return
+            if conn.execute(
+                "SELECT 1 FROM worker_nodes n JOIN tasks t ON t.id=n.task_id WHERE n.parent_id=? AND t.status NOT IN ('done','failed','cancelled')",
+                (task_id,),
+            ).fetchone():
+                raise RuntimeError("Child workers are still active; use worker_wait before completing")
             if json.loads(task["pending"]):
                 raise RuntimeError("Verification found pending actions")
             if conn.execute(

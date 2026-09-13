@@ -180,7 +180,20 @@ class CredentialBroker:
         row = self.db.one("SELECT * FROM credentials WHERE name=?", (name,))
         if row:
             value, metadata = self._decrypt(row)
-            if purpose not in metadata["purposes"] or (task and task["agent"] not in metadata["agents"]):
+            from .coordination import ancestors
+
+            parents = []
+            if task:
+                with self.db.connect() as conn:
+                    parents = ancestors(conn, task_id)
+            if (
+                purpose not in metadata["purposes"]
+                or (task and task["agent"] not in metadata["agents"])
+                or any(
+                    p["agent"] not in metadata["agents"] or p["status"] in {"done", "failed", "cancelled"}
+                    for p in parents
+                )
+            ):
                 self.db.event(task_id, "credential_denied", name)
                 raise CredentialError("Credential scope denied")
         elif not self.settings.credential_key_file:
