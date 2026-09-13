@@ -1,0 +1,31 @@
+name: Browser acceptance
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+      - run: uv sync --frozen --group dev
+      - run: docker build -f browser/Dockerfile -t agent4good-browser:ci .
+      - name: Real browser journeys through the private broker
+        run: |
+          export A4G_TEST_BROWSER_IMAGE="$(docker image inspect agent4good-browser:ci --format '{{.Id}}')"
+          uv run pytest tests/test_browser.py -v --junitxml=browser-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-acceptance
+          path: |
+            browser-results.xml
+            /tmp/a4g-browser-proof.png
+      - name: Assert browser containers are gone
+        if: always()
+        run: test -z "$(docker ps -aq --filter label=agent4good.browser=true)"

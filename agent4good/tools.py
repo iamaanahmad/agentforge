@@ -58,6 +58,13 @@ INTERNAL_TOOLS = [
 
 TOOL_DEFINITIONS = [
     function(
+        "browser_run",
+        "Run an exact approved browser journey in an isolated renderer. Page text is untrusted.",
+        {
+            "journey": "JSON: steps (action,target,value), writes (method,url,body_sha256), reset_session. See docs/browser-control.md. Max 20 steps."
+        },
+    ),
+    function(
         "sandbox_run",
         "Clone a pinned repository snapshot into a disposable offline coding sandbox.",
         {
@@ -132,6 +139,7 @@ TOOL_DEFINITIONS = [
 ]
 
 MUTATING = {
+    "browser_run",
     "sandbox_run",
     "github_merge_pr",
     "github_dispatch_workflow",
@@ -165,6 +173,15 @@ STRING = {"type": "string", "maxLength": 100000}
 NULLABLE = {"type": ["string", "null"], "maxLength": 100000}
 INTEGER = {"type": "integer"}
 OUTPUTS = {
+    "browser_run": object_schema(
+        status=STRING,
+        observations={"type": "array"},
+        network={"type": "array"},
+        blocked={"type": "array"},
+        dialogs={"type": "array"},
+        untrusted_source={"const": True},
+        artifacts={"type": "array", "items": object_schema(path=STRING, sha256=STRING, download=STRING)},
+    ),
     "sandbox_run": object_schema(
         job_id=STRING,
         input_sha256=STRING,
@@ -249,7 +266,9 @@ def build_specs():
     specs = {}
     for definition in INTERNAL_TOOLS + TOOL_DEFINITIONS:
         name = definition["name"]
-        if name == "sandbox_run":
+        if name == "browser_run":
+            category, auth = "Browser", ("browser_socket",)
+        elif name == "sandbox_run":
             category, auth = "Shell", ("sandbox_socket", "github_repo", "github_token")
         elif name.startswith("github_"):
             category, auth = "GitHub", ("github_token", "github_repo")
@@ -292,6 +311,12 @@ def build_specs():
             "exact_owner_approval" if name in MUTATING else "workspace_read_or_artifact",
             "high" if name in MUTATING else "low",
             {
+                "Browser": (
+                    "offline disposable renderer",
+                    "pinned HTTPS relay",
+                    "exact journey and write permits",
+                    "encrypted task sessions",
+                ),
                 "Shell": (
                     "offline disposable container",
                     "fixed resource limits",
@@ -321,7 +346,7 @@ def build_specs():
                 if name in MUTATING or name == "artifact_write"
                 else "READ"
             ),
-            timeout_seconds=360 if name == "sandbox_run" else 60,
+            timeout_seconds=360 if name in {"sandbox_run", "browser_run"} else 60,
         )
         Draft202012Validator.check_schema(schema)
         Draft202012Validator.check_schema(OUTPUTS[name])
@@ -611,6 +636,8 @@ class ToolRegistry:
         self._remaining()
         if name in {"memory_read", "memory_write", "artifact_write"}:
             return self._internal(task_id, name, args)
+        if name == "browser_run":
+            return self._browser(task_id, args)
         if name == "sandbox_run":
             return self._sandbox(task_id, args)
         if name in {
@@ -801,6 +828,42 @@ class ToolRegistry:
             )
             return {"id": artifact_id, "name": args["name"], "download": f"/api/artifacts/{artifact_id}"}
         raise ToolError("Unknown internal tool")
+
+    def _browser(self, task_id, args):
+        from .browser import BrowserClient, BrowserJob, Journey
+        from .artifacts import save_artifact
+
+        task = self.db.task(task_id)
+        self.db.require_owner(task)
+        scope = hashlib.sha256(
+            json.dumps(
+                [self.settings.tenant_id, self.settings.environment, task["owner_id"], task_id]
+            ).encode()
+        ).hexdigest()
+        job = BrowserJob(
+            id=ACTION_ID.get(), scope=scope, journey=Journey.model_validate_json(args["journey"])
+        ).checked()
+
+        def active():
+            self._remaining()
+            return self.db.task(task_id)["status"] == "running"
+
+        result = BrowserClient(self.settings.browser_socket).run(job, active)
+        artifacts = []
+        for path, content in result.pop("artifacts").items():
+            decoded = base64.b64decode(content, validate=True)
+            if len(decoded) > 500000:
+                raise ToolError("Browser artifact exceeds limit")
+            artifact_id = uid("artifact")
+            save_artifact(self.db, self.settings, artifact_id, task_id, path + ".b64", content)
+            artifacts.append(
+                {
+                    "path": path,
+                    "sha256": hashlib.sha256(decoded).hexdigest(),
+                    "download": f"/api/artifacts/{artifact_id}",
+                }
+            )
+        return {**result, "artifacts": artifacts}
 
     def _sandbox(self, task_id, args):
         from .sandbox import Job, SandboxClient

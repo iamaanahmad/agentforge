@@ -77,3 +77,6 @@ September 13, 2026: this live read passed and returned 142 text characters throu
 The public raw GitHub documentation probe returned HTTP 404. It did not establish GitHub adapter acceptance.
 GitHub writes, Brave Search, and Resend have simulated regression evidence only in this release.
 No email was sent, and no production deployment or live model completion is claimed.
+
+`browser_run` uses the Browser category with mandatory exact approvals and durable receipts.
+Its offline renderer, HTTPS relay, and session limits are documented in [Browser control](browser-control.md).

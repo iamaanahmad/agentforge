@@ -27,7 +27,8 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 | Analytics and finance | Analysis of supplied evidence, original playbooks | PostHog, GA4, Stripe, database access, session replay |
 | Support and sales | Supplied-ticket analysis, exact approved Resend email sends | Inbound inbox sync, CRM, bulk sequences, LinkedIn |
 | Paid growth and creative | Campaign plans, copy and creative briefs | Ad activation, image/video generation, real budget management |
-| Agent operations | Nine role prompts, durable tasks, schedules, memory, approvals, audit events | Parallel subagents, browser automation, plugins/MCP, multi-tenant SaaS, SSO |
+| Browser work | Exact-approved isolated Chromium journeys, forms, file transfer, tabs, screenshots, encrypted task sessions | Unrestricted browsing, challenge bypass, cross-task session sharing, production browser hosting |
+| Agent operations | Nine role prompts, durable tasks, schedules, memory, approvals, audit events | Parallel subagents, plugins/MCP, multi-tenant SaaS, SSO |
 
 Evidence for the included paths: [API checks](tests/test_app.py), [engine checks](tests/test_engine.py),
 [tool checks](tests/test_tools.py), and [provider contract checks](tests/test_provider.py).
@@ -164,3 +165,5 @@ See [configuration, budgets, capability limits, and acceptance evidence](docs/mo
 ## Distributed deployment
 
 Use [the PostgreSQL deployment guide](docs/distributed-infrastructure.md) for independent control and worker containers, a database queue, private objects, lease recovery, and versioned migration. The original SQLite commands remain single-host only. Real service tests use scripted model answers; public production operation remains unverified.
+
+Browser setup, supported actions, network limits, and recovery: [Browser control](docs/browser-control.md).
