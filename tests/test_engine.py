@@ -80,14 +80,17 @@ def test_external_tool_approval_and_receipt_replay(settings):
     )
     db, e, t = make(settings, p)
     sent = []
-    e.registry.execute = lambda name, args: sent.append(args) or {"message_id": "provider_receipt"}
+    settings.resend_api_key = "test-key"
+    settings.mail_from = "owner@example.com"
+    e.registry._request = lambda *args: sent.append(args[3]) or {"id": "provider_receipt"}
     e.run(t)
     assert sent == []
     approve(db, t)
     e.claim()
     e.run(t)
     assert db.task(t)["status"] == "done"
-    assert sent == [args]
+    assert len(sent) == 1
+    assert sent[0]["text"] == args["body"]
 
 
 def test_tampered_approval_fails(settings):
@@ -192,7 +195,9 @@ def test_ambiguous_external_failure_does_not_retry(settings):
     def fail(*args):
         raise TimeoutError("Unknown delivery")
 
-    e.registry.execute = fail
+    settings.resend_api_key = "test-key"
+    settings.mail_from = "owner@example.com"
+    e.registry._request = fail
     e.run(t)
     assert db.task(t)["status"] == "failed"
     assert db.all("SELECT * FROM tool_runs")[0]["status"] == "started"

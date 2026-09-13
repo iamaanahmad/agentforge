@@ -127,3 +127,9 @@ Tests cover API authentication, CSRF, limits, persistence, approvals, task cance
 ## Ownership
 
 The code is committed to your repository. No third-party open-source license is selected on your behalf. Choose a license before offering redistribution rights. Provider SDKs and dependencies retain their own licenses.
+
+## Typed tool execution
+
+All 12 implemented tools now share validated execution, exact approvals, durable receipts, and shared rate limits.
+The authenticated `/api/tools` catalog separates executable tools from planned categories.
+See [tool contracts and bounded live evidence](docs/tool-registry.md).
