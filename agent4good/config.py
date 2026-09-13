@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     github_installation_id: str = ""
     github_app_private_key: str = Field("", repr=False, exclude=True)
     github_repo: str = ""
+    browser_socket: str = ""
     sandbox_socket: str = ""
     sandbox_source_prefix: str = ""
     github_merge_checks: list[str] = []

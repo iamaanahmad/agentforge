@@ -1,3 +1,5 @@
+import base64
+import binascii
 import hashlib
 import hmac
 import re
@@ -536,7 +538,7 @@ def create_app(settings=None):
         )
 
     @app.get("/api/artifacts/{artifact_id}", dependencies=[Depends(auth)])
-    def artifact(artifact_id: str):
+    def artifact(artifact_id: str, decode_browser: bool = False):
         row = db.one("SELECT * FROM artifacts WHERE id=?", (artifact_id,))
         if not row:
             raise HTTPException(404, "Artifact not found")
@@ -544,10 +546,22 @@ def create_app(settings=None):
         # Always attachment + plain text: generated HTML must never execute on the application origin.
         from .artifacts import read_artifact
 
+        content = read_artifact(db, settings, row)
+        name, media_type = row["name"], "text/plain"
+        if decode_browser:
+            if not re.fullmatch(r"(?:screenshot-[0-9]+\.png|download-[0-9]+\.bin)\.b64", name):
+                raise HTTPException(400, "Not a browser artifact")
+            try:
+                content = base64.b64decode(content, validate=True)
+            except (ValueError, binascii.Error):
+                raise HTTPException(400, "Invalid browser artifact") from None
+            if len(content) > 500000:
+                raise HTTPException(400, "Browser artifact exceeds limit")
+            name, media_type = name[:-4], "application/octet-stream"
         return Response(
-            read_artifact(db, settings, row),
-            media_type="text/plain",
-            headers={"Content-Disposition": f'attachment; filename="{row["name"]}"'},
+            content,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
         )
 
     app.mount("/static", StaticFiles(directory=static), name="static")

@@ -142,3 +142,24 @@ def test_concurrent_task_creation_is_durable(app):
         ids = list(pool.map(lambda n: db.create_task(str(n), "Work", "strategist"), range(12)))
     assert len(set(ids)) == 12
     assert len(db.all("SELECT * FROM tasks")) == 12
+
+
+def test_browser_artifact_download_is_private_decoded_attachment(owner, app):
+    import base64
+    from fastapi.testclient import TestClient
+
+    db = app.state.db
+    task = db.create_task("Browser evidence", "Controlled test", "product_engineer")
+    db.execute(
+        "INSERT INTO artifacts VALUES (?,?,?,?,?)",
+        ("browser_proof", task, "screenshot-1.png.b64", base64.b64encode(b"marked proof").decode(), now()),
+    )
+    url = "/api/artifacts/browser_proof?decode_browser=true"
+    assert TestClient(app).get(url).status_code == 401
+    r = owner.get(url)
+    assert r.content == b"marked proof"
+    assert r.headers["content-type"] == "application/octet-stream"
+    assert r.headers["content-disposition"] == 'attachment; filename="screenshot-1.png"'
+    assert r.headers["x-content-type-options"] == "nosniff"
+    db.execute("UPDATE tasks SET owner_id='another-owner' WHERE id=?", (task,))
+    assert owner.get(url).status_code == 404

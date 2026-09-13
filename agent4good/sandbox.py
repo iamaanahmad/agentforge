@@ -220,26 +220,32 @@ class SandboxClient:
 def serve():
     """Run a separate broker with a mode-0600 Unix socket. Never put Docker in the model worker."""
     import argparse
-    import fcntl
-    from pathlib import Path
-    import uvicorn
-    from fastapi import FastAPI, HTTPException, Request
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--socket", required=True)
     parser.add_argument("--image", required=True)
     parser.add_argument("--runtime", choices=["runc", "runsc"], default="runc")
     args = parser.parse_args()
+    backend = DockerSandbox(args.image, runtime=args.runtime)
+    backend.preflight()
+    serve_backend(args.socket, backend, Job, backend.recover)
+
+
+def serve_backend(socket_name, backend, job_model, recover, input_limit=800000):
+    """Private bounded job transport shared by coding and browser brokers."""
+    import fcntl
+    from pathlib import Path
+    import uvicorn
+    from fastapi import FastAPI, HTTPException, Request
+
     os.umask(0o077)
-    socket_path = Path(args.socket)
+    socket_path = Path(socket_name)
     socket_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if socket_path.parent.stat().st_mode & 0o077:
         raise SandboxError("Socket directory must be owner-only")
     guard = open(socket_path.parent / "broker.lock", "w")
     fcntl.flock(guard, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    backend = DockerSandbox(args.image, runtime=args.runtime)
-    backend.preflight()
-    backend.recover()
+    recover()
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     jobs, mutex = {}, threading.Lock()
 
@@ -257,10 +263,10 @@ def serve():
         raw = bytearray()
         async for chunk in request.stream():
             raw.extend(chunk)
-            if len(raw) > 800000:
+            if len(raw) > input_limit:
                 raise HTTPException(413, "Workspace too large")
         try:
-            job = Job.model_validate_json(raw).checked()
+            job = job_model.model_validate_json(raw).checked()
         except Exception:
             raise HTTPException(400, "Invalid workspace request") from None
         with mutex:
@@ -313,7 +319,7 @@ def serve():
             job["cancel"].set()
         for job in list(jobs.values()):
             job["thread"].join(timeout=30)
-        backend.recover()
+        recover()
         listener.close()
         socket_path.unlink(missing_ok=True)
 
