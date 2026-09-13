@@ -282,7 +282,7 @@ class ToolRegistry:
     def availability(self, name):
         spec = SPECS[name]
         missing = [key for key in spec.authentication if not getattr(self.settings, key)]
-        if not spec.authentication and self.db is None:
+        if self.db is None:
             missing.append("workspace database")
         if missing:
             return "unavailable", "Missing server configuration: " + ", ".join(missing)

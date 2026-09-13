@@ -137,3 +137,11 @@ def test_each_tool_rejects_invalid_input_and_output(name):
         validate_arguments(name, {"model_selected_credential": "must-not-be-accepted"})
     with pytest.raises(ToolError):
         validate_schema(SPECS[name].output_schema, None, "output")
+
+
+def test_configured_credentials_without_audit_storage_are_not_executable(settings):
+    settings.github_token = "test-token"
+    settings.github_repo = "owner/repo"
+    r = ToolRegistry(settings)
+    assert r.definitions() == []
+    assert "workspace database" in r.availability("github_list_issues")[1]
