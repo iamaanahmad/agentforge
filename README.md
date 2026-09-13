@@ -7,6 +7,7 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 ## What works
 
 - A responsive dashboard with missions, tasks, results, decisions, nine agents, shared memory, schedules, connections, and activity.
+- A [linked execution timeline](docs/execution-timeline.md) with task trees, saved plans, approvals, usage labels, reconnect, and private JSON export.
 - An OpenAI Responses or Anthropic Messages tool loop with versioned plans, checkpoint recovery, bounded retries, and execution-integrity checks.
 - Stable write identities reuse completed receipts across replanning. Ambiguous writes stop for inspection.
 - Original, editable role playbooks for strategy, research, product engineering, analytics, SEO, support, outreach, paid acquisition, and finance.
@@ -30,6 +31,7 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 | Browser work | Exact-approved isolated Chromium journeys, forms, file transfer, tabs, screenshots, encrypted task sessions | Unrestricted browsing, challenge bypass, cross-task session sharing, production browser hosting |
 | Memory | Private working snapshots, past-run episodes, sourced facts, bounded lexical retrieval, versioned corrections and quarantine | Embedding search, automatic document ingestion, multi-user memory |
 | Missions | Immutable objectives and criteria, bounded dependent plans, shared limits, revisions, pause/cancel, receipt and owner evidence checks | Automatic mission-wide semantic acceptance |
+| Execution history | Ordered task and child-agent events, plans, approvals, results, provider-reported tokens, estimated costs, private export | Hidden reasoning, actual billing, production or live-model acceptance |
 | Outcome learning | Evidence-linked completed, failed, and abandoned attempts; planning reuse; owner corrections and invalidations | Model training, automatic policy changes, measured performance gains |
 | Quality | Owner-defined executable checks, isolated critics, bounded builder revisions, separate verifiers, saved evidence | Visual critics, proof of arbitrary claims, live model quality evidence |
 | Scheduling | One-time, daily time-zone recurrence, deadline, event, and condition triggers; dependencies, priorities, atomic occurrence receipts | Cron expressions, arbitrary code or network conditions, hard completion deadlines |

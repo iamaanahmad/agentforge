@@ -569,11 +569,19 @@ def create_app(settings=None):
             from .coordination import settle
 
             settle(conn)
-        db.event(
-            approval["task_id"],
-            "approved" if approved else "rejected",
-            "Owner " + payload.decision + "d exact action: " + approval["tool"],
-        )
+            from .timeline import emit
+
+            emit(
+                conn,
+                approval["task_id"],
+                "approved" if approved else "rejected",
+                "Owner decided exact action",
+                approval_id=approval_id,
+                step_id=approval["call_id"],
+                tool=approval["tool"],
+                status="approved" if approved else "rejected",
+            )
+
         return next(row for row in db.approval_list(approval["task_id"]) if row["id"] == approval_id)
 
     @app.get("/api/memory", dependencies=[Depends(auth)])
@@ -732,6 +740,33 @@ def create_app(settings=None):
                 conn.execute("UPDATE settings SET value=? WHERE key=?", (value, key))
         db.event(None, "settings_updated", f"Owner set autonomy to {payload.autonomy}")
         return payload
+
+    @app.get("/api/timeline", dependencies=[Depends(auth)])
+    def timeline(
+        after: int = 0,
+        limit: int = 100,
+        task_id: str | None = None,
+        agent: str | None = None,
+        kind: str | None = None,
+        through: int | None = None,
+    ):
+        from .timeline import read
+
+        if after < 0 or not 1 <= limit <= 500 or (through is not None and through < 0):
+            raise HTTPException(422, "Invalid cursor or page size")
+        try:
+            return read(
+                db,
+                registry.credentials,
+                after=after,
+                limit=limit,
+                task_id=task_id,
+                agent=agent,
+                kind=kind,
+                through=through,
+            )
+        except LookupError as exc:
+            raise HTTPException(404, "Task not found") from exc
 
     @app.get("/api/events", dependencies=[Depends(auth)])
     def events():

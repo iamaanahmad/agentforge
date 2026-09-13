@@ -314,6 +314,18 @@ class PolicyEngine:
             )
             approval = conn.execute("SELECT * FROM approvals WHERE id=?", (approval_id,)).fetchone()
             self.bind(conn, approval, decision)
+            from .timeline import emit
+
+            emit(
+                conn,
+                task_id,
+                "approval_created",
+                "Exact action awaits owner decision",
+                approval_id=approval_id,
+                step_id=call_id,
+                tool=spec.name,
+                status="pending",
+            )
             conn.execute(
                 "UPDATE tasks SET status='waiting_approval',updated_at=? WHERE id=?", (now(), task_id)
             )
