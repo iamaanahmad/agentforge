@@ -163,7 +163,11 @@ def main():
                             return selector(n.parentElement)+' > '+n.tagName.toLowerCase()+':nth-of-type('+(peers.indexOf(n)+1)+')';
                         }
                         return {selector:selector(e),tag:e.tagName.toLowerCase(),type:e.getAttribute('type'),
-                            name:e.getAttribute('name'),text:(e.innerText||e.getAttribute('aria-label')||'').slice(0,150)};
+                            name:e.getAttribute('name'),text:(e.innerText||e.getAttribute('aria-label')||'').slice(0,150),
+                            href:e.tagName==='A'?e.href.slice(0,2000):null,
+                            form:e.tagName==='FORM'?{action:e.action.slice(0,2000),method:e.method}:null,
+                            checked:e.type==='checkbox'?e.checked:null,
+                            options:e.tagName==='SELECT'?[...e.options].slice(0,20).map(o=>({value:o.value.slice(0,150),text:o.text.slice(0,150),selected:o.selected})):[]};
                     })""")
                 observations.append(
                     {

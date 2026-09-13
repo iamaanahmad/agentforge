@@ -145,6 +145,8 @@ PAGE = b"""<!doctype html><html><head><title>Agent4Good browser acceptance</titl
 <p>Use a marked test identity to save a form and transfer a file.</p>
 <form action="/submit" method="post"><label>Name <input name="name" id="name"></label>
 <button id="submit">Save form</button></form><p><input id="upload" type="file"></p>
+<label>Choice <select id="choice"><option value="a">First</option><option value="b">Second</option></select></label>
+<label><input id="consent" type="checkbox">Marked test consent</label>
 <form action="/upload" method="post" enctype="multipart/form-data"><input id="network-file" name="file" type="file"><button id="upload-submit">Upload file</button></form>
 <form action="/lost-response" method="post"><button id="lost-submit">Test lost response</button></form>
 <p><a id="download" href="/download">Download test receipt</a></p>
@@ -488,3 +490,28 @@ def test_real_file_upload_and_uncertain_submission(renderer, store, fixture_serv
     second = backend.run(job(steps, permit))
     assert second["status"] != "ok"
     assert len([r for r in fixture_server if r[0] == "POST" and r[1] == "/lost-response"]) == 1
+
+
+def test_real_form_discovery_select_check_scroll_and_explicit_tabs(renderer, store, fixture_server):
+    result = BrowserBackend(store, renderer, ["fixture.example"]).run(
+        job(
+            [
+                {"action": "navigate", "target": BASE},
+                {"action": "inspect"},
+                {"action": "select", "target": "#choice", "value": "b"},
+                {"action": "check", "target": "#consent", "value": "true"},
+                {"action": "press", "target": "#consent", "value": "Tab"},
+                {"action": "scroll", "target": "#download"},
+                {"action": "new_tab", "target": BASE + "/second"},
+                {"action": "switch_tab", "target": "0"},
+                {"action": "inspect"},
+            ]
+        )
+    )
+    assert result["status"] == "ok", result
+    before = result["observations"][1]["elements"]
+    assert any(e["form"] == {"action": BASE + "/submit", "method": "post"} for e in before)
+    after = {e["selector"]: e for e in result["observations"][-1]["elements"]}
+    assert after["#consent"]["checked"] is True
+    assert after["#choice"]["options"][1]["selected"] is True
+    assert after["#download"]["href"] == BASE + "/download"
