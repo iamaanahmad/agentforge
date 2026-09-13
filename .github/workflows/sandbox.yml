@@ -17,6 +17,8 @@ jobs:
       - name: Build reviewed offline toolchain
         run: docker build -f sandbox/Dockerfile -t agent4good-sandbox:ci .
       - name: Real coding, container packaging, and hostile-code checks
+        env:
+          A4G_TEST_GITHUB_TOKEN: ${{ github.token }}
         run: |
           export A4G_TEST_SANDBOX_IMAGE="$(docker image inspect agent4good-sandbox:ci --format '{{.Id}}')"
           uv run pytest tests/test_sandbox.py tests/test_delivery.py -v --junitxml=sandbox-results.xml

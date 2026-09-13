@@ -112,3 +112,37 @@ def test_workflow_selection_stale_head_and_results(settings, monkeypatch):
         )["runs"][0]["id"]
         == 42
     )
+
+
+def test_app_tokens_are_repository_scoped_short_lived_and_revoked(settings, monkeypatch):
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives import serialization
+    from types import SimpleNamespace
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    settings.github_app_id, settings.github_installation_id = "1", "2"
+    settings.github_app_private_key = key.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+    ).decode()
+    settings.github_repo = "owner/repo"
+    r, task = runnable(settings)
+    requests, revocations = [], []
+
+    def request(method, url, headers=None, payload=None):
+        requests.append((method, url, payload))
+        if "/access_tokens" in url:
+            return {"token": "leased-test-token", "expires_at": "2099-01-01T00:00:00Z"}
+        return []
+
+    monkeypatch.setattr(r, "_request", request)
+    monkeypatch.setattr(
+        "agent4good.tools.httpx.delete",
+        lambda *a, **kw: (
+            revocations.append(kw["headers"]["Authorization"]) or SimpleNamespace(status_code=204)
+        ),
+    )
+    assert r.execute("github_list_issues", {}, task_id=task, call_id="check") == []
+    assert requests[0][2] == {"repositories": ["repo"], "permissions": {"contents": "read", "issues": "read"}}
+    assert revocations == ["Bearer leased-test-token"]
+    assert "leased-test-token" not in str(r.db.all("SELECT * FROM events"))
+    assert "leased-test-token" not in str(r.db.all("SELECT * FROM tool_runs"))

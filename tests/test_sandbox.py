@@ -189,6 +189,11 @@ except OSError:
     assert len(children)<64
 else:
     raise AssertionError('Process limit absent')
+finally:
+    for child in children:
+        child.terminate()
+    for child in children:
+        child.wait()
 CHECK
 """
     result = real_backend.run(job(script))
@@ -228,3 +233,71 @@ def test_real_timeout(real_backend):
     with pytest.raises(SandboxError, match="timed out"):
         real_backend.run(job("sleep 100"))
     assert time.monotonic() - started < 20
+
+
+def test_real_broker_socket_and_registry_receipt(real_backend, settings, monkeypatch, tmp_path):
+    import sys
+    import httpx
+    from agent4good.sandbox import SandboxClient
+
+    directory = tmp_path / "private-broker"
+    directory.mkdir(mode=0o700)
+    socket = directory / "broker.sock"
+    # The broker never receives provider or GitHub credentials, even in this test.
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "agent4good.sandbox", "--image", real_backend.image, "--socket", str(socket)],
+        env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        for _ in range(100):
+            if socket.exists():
+                break
+            assert proc.poll() is None, "Broker exited before listening"
+            time.sleep(0.1)
+        assert socket.exists() and socket.stat().st_mode & 0o077 == 0
+        settings.sandbox_socket = str(socket)
+        settings.github_repo = os.getenv("GITHUB_REPOSITORY", "owner/repo")
+        settings.github_token = os.getenv("A4G_TEST_GITHUB_TOKEN", "test-token")
+        r, task = runnable(settings)
+        if os.getenv("A4G_TEST_GITHUB_TOKEN"):
+            settings.sandbox_source_prefix = "tests/fixtures/coding"
+            ref = os.environ["GITHUB_SHA"]
+        else:
+            ref = "a" * 40
+            monkeypatch.setattr(
+                r,
+                "_github",
+                lambda method, endpoint, payload=None: (
+                    {"tree": [{"type": "blob", "mode": "100644", "path": "calc.py", "sha": "b" * 40}]}
+                    if "/trees/" in endpoint
+                    else {"content": base64.b64encode(b"def add(a,b): return a+b").decode()}
+                ),
+            )
+        args = {
+            "ref": ref,
+            "script": "printf 'def add(a, b): return a + b + 1\n' > calc.py\n"
+            "python3 -c 'from calc import add; assert add(2,3)==6'",
+            "artifacts": "calc.py",
+        }
+        permit(r, task, "sandbox_run", args)
+        result = r.execute("sandbox_run", args, task_id=task, call_id="check")
+        assert result["exit_code"] == 0 and len(result["artifacts"]) == 1
+        assert r.db.one("SELECT status FROM tool_runs WHERE tool='sandbox_run'")["status"] == "done"
+        result_again = r.execute("sandbox_run", args, task_id=task, call_id="check")
+        assert result_again == result
+        # Stop while running through the client protocol, not just the backend method.
+        started = time.monotonic()
+        with pytest.raises(SandboxError, match="stopped"):
+            SandboxClient(socket).run(job("sleep 100 & wait"), lambda: time.monotonic() - started < 2)
+        transport = httpx.HTTPTransport(uds=str(socket))
+        with httpx.Client(transport=transport, base_url="http://sandbox") as client:
+            bad = client.post(
+                "/jobs",
+                json={"id": "a" * 64, "files": {"../escape": "bad"}, "script": "true", "artifacts": []},
+            )
+            assert bad.status_code == 400
+    finally:
+        proc.terminate()
+        proc.wait(timeout=35)

@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     github_app_private_key: str = Field("", repr=False, exclude=True)
     github_repo: str = ""
     sandbox_socket: str = ""
+    sandbox_source_prefix: str = ""
     github_merge_checks: list[str] = []
     github_deploy_workflows: list[str] = []
     resend_api_key: str = Field("", repr=False, exclude=True)

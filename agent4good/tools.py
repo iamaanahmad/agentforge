@@ -808,15 +808,23 @@ class ToolRegistry:
 
         # Fetch only the configured repository at an immutable revision. No clone credentials cross the boundary.
         tree = self._github("GET", "/git/trees/" + args["ref"] + "?recursive=1")
-        if tree.get("truncated") or len(tree.get("tree", [])) > 256:
+        prefix = self.settings.sandbox_source_prefix
+        if prefix:
+            from .sandbox import safe_path
+
+            safe_path(prefix)
+        entries = [
+            item for item in tree.get("tree", []) if not prefix or item["path"].startswith(prefix + "/")
+        ]
+        if tree.get("truncated") or len(entries) > 256 or not entries:
             raise ToolError("Repository snapshot exceeds sandbox limits")
         files = {}
-        for item in tree["tree"]:
+        for item in entries:
             if item["type"] == "tree":
                 continue
             if item.get("mode") not in {"100644", "100755"} or item["type"] != "blob":
                 raise ToolError("Submodules and symbolic links are not supported in sandbox snapshots")
-            path = item["path"]
+            path = item["path"][len(prefix) + 1 :] if prefix else item["path"]
             self._path(path)
             if item.get("size", 0) > 100000:
                 raise ToolError("Repository file exceeds sandbox size limit")

@@ -22,7 +22,7 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 
 | Area | Included now | Not implemented in v0.1 |
 |---|---|---|
-| Product work | Read repository files and issues; create branches, commits, issues, and draft PRs with approval | Shell execution, running tests in customer repositories, autonomous merge/deploy |
+| Product work | Approved offline coding sandboxes, repository reads, branches, commits, draft PRs, checked merges, and configured workflow dispatch | Unrestricted shell, network package installation, full Dockerfile builds, production sandbox hosting |
 | Research and SEO | Brave search, allowlisted public pages, source-based reports and content drafts | Search Console, rank tracking, backlink databases, automatic CMS publishing |
 | Analytics and finance | Analysis of supplied evidence, original playbooks | PostHog, GA4, Stripe, database access, session replay |
 | Support and sales | Supplied-ticket analysis, exact approved Resend email sends | Inbound inbox sync, CRM, bulk sequences, LinkedIn |
@@ -33,10 +33,13 @@ Evidence for the included paths: [API checks](tests/test_app.py), [engine checks
 [tool checks](tests/test_tools.py), and [provider contract checks](tests/test_provider.py).
 [Release acceptance checks](tests/test_release_acceptance.py) restore a real SQLite backup into a separate workspace.
 They verify saved approvals, artifact retrieval, safe checkpoint recovery, and refusal to replay ambiguous writes.
-Model responses in these tests are scripted. No capability has live provider or production acceptance evidence yet.
+Model responses in these tests are scripted. Live model completion and production operation remain unverified.
+[Isolated coding acceptance](docs/isolated-coding.md) adds real container and GitHub delivery evidence.
 The missing capabilities above remain planned, not available integrations.
 
 Roles describe how an agent works. They do not manufacture access to a service. Do not grant this worker an unrestricted shell or mount a Docker socket to fill those gaps.
+
+See [isolated coding workspaces](docs/isolated-coding.md) for broker setup, threat model, resource limits, and delivery rules.
 
 ## Run locally
 
