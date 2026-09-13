@@ -1120,6 +1120,21 @@ class ToolRegistry:
             if self.db is not None:
                 known_task = task_id if isinstance(task_id, str) and self.db.task(task_id) else None
                 self.db.event(known_task, "tool_refused_or_failed", "Tool invocation did not complete")
+                if known_task:
+                    from .missions import mission_for
+
+                    with self.db.connect() as conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        if (
+                            mission_for(conn, known_task)
+                            and not conn.execute(
+                                "SELECT 1 FROM tool_runs WHERE task_id=? AND call_id=?", (known_task, call_id)
+                            ).fetchone()
+                        ):
+                            conn.execute(
+                                "INSERT INTO events(task_id,kind,message,created_at) VALUES (?,'mission_call_refused','Call refused before a receipt was created',?)",
+                                (known_task, now()),
+                            )
             if isinstance(exc, PolicyError):
                 raise ToolError(str(exc)) from exc
             raise

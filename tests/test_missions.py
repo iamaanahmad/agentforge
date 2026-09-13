@@ -460,3 +460,15 @@ def test_mission_priority_and_metric_evidence(settings):
     assert not detail(db, mid)["verification"][0]["met"]
     db.execute("UPDATE tool_runs SET result=? WHERE call_id='measured'", (json.dumps({"count": 3}),))
     assert detail(db, mid)["verification"][0]["met"]
+
+
+def test_invalid_planning_calls_consume_mission_allowance(settings):
+    db, mid = setup(settings, spec(budget={"tool_calls": 1}))
+    e = Engine(db, settings, FakeProvider())
+    t = e.claim()
+    with pytest.raises(ValueError):
+        e.registry.execute("mission_plan", {"request": "{}"}, task_id=t, call_id="invalid")
+    with pytest.raises(ValueError, match="budget"):
+        e.registry.execute("mission_status", {}, task_id=t, call_id="next")
+    assert detail(db, mid)["revision"] == 0
+    assert not db.all("SELECT * FROM mission_plans")

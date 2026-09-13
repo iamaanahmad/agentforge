@@ -137,6 +137,10 @@ def usage(conn, mission_id):
     calls = conn.execute(
         f"SELECT COALESCE(SUM(attempts),0) FROM tool_runs WHERE task_id IN ({MEMBERS})", (mission_id,)
     ).fetchone()[0]
+    calls += conn.execute(
+        f"SELECT COUNT(*) FROM events WHERE kind='mission_call_refused' AND task_id IN ({MEMBERS})",
+        (mission_id,),
+    ).fetchone()[0]
     model = conn.execute(
         f"SELECT COALESCE(SUM(reserved_tokens),0),COALESCE(SUM(CASE WHEN reserved_micro_usd>0 THEN reserved_micro_usd ELSE 0 END),0) FROM model_calls WHERE task_id IN ({MEMBERS})",
         (mission_id,),
