@@ -1,5 +1,5 @@
 name: Isolated coding acceptance
-on: [push, pull_request, workflow_dispatch]
+on: [push, pull_request, workflow_dispatch, workflow_call]
 permissions:
   contents: read
 jobs:
@@ -23,6 +23,8 @@ jobs:
         run: |
           export A4G_TEST_SANDBOX_IMAGE="$(docker image inspect agent4good-sandbox:ci --format '{{.Id}}')"
           uv run pytest tests/test_sandbox.py tests/test_delivery.py -v --junitxml=sandbox-results.xml
+      - name: Require real sandbox evidence without skips
+        run: uv run python scripts/check_test_evidence.py sandbox-results.xml --require test_real_host_secret_filesystem_network_and_privileges
       - uses: actions/upload-artifact@v4
         if: always()
         with:
