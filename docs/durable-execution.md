@@ -44,7 +44,8 @@ Inspect provider records before creating replacement work. A new task gets a new
 
 SQLite immediate transactions serialize task claims and receipt reservations.
 Per-task OS locks fence concurrent engine runners and prevent recovery from stealing an active run.
-The worker retains its single-volume process lock. Different hosts and NFS remain unsupported.
+The SQLite worker retains its single-volume process lock. SQLite across hosts and NFS remain unsupported.
+The optional [PostgreSQL path](distributed-infrastructure.md) uses session locks, expiring leases, and fenced transactions across workers.
 Locks release when a process dies. Durable records survive; lock files contain no task content.
 
 `A4G_MAX_RECOVERIES` defaults to 3; `A4G_MAX_MODEL_RETRIES` defaults to 2 transport retries.

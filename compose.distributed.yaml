@@ -1,0 +1,107 @@
+# Separate control and execution services. PostgreSQL is also the durable queue.
+x-app: &app
+  build: .
+  image: agent4good:distributed
+  environment: &environment
+    A4G_DATABASE_URL_FILE: /run/secrets/database_url
+    A4G_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+    A4G_SESSION_SECRET_FILE: /run/secrets/session_secret
+    A4G_S3_ACCESS_KEY_FILE: /run/secrets/object_access
+    A4G_S3_SECRET_KEY_FILE: /run/secrets/object_secret
+    A4G_S3_ENDPOINT: http://objects:9000
+    A4G_S3_BUCKET: agent4good
+    A4G_CREDENTIAL_KEY_FILE: /run/keys/keyring.json
+    A4G_DATA_DIR: /tmp/worker
+    A4G_PUBLIC_ORIGIN: ${A4G_PUBLIC_ORIGIN:-http://localhost:18000}
+    A4G_SECURE_COOKIES: ${A4G_SECURE_COOKIES:-false}
+    A4G_ALLOWED_HOSTS: ${A4G_ALLOWED_HOSTS:-["localhost","127.0.0.1"]}
+    A4G_ENVIRONMENT: ${A4G_ENVIRONMENT:-staging}
+    A4G_MAX_CONCURRENT_RUNS: ${A4G_MAX_CONCURRENT_RUNS:-4}
+    A4G_MAX_QUEUED_TASKS: ${A4G_MAX_QUEUED_TASKS:-1000}
+  secrets: [database_url, admin_password, session_secret, object_access, object_secret]
+  volumes:
+    - ${A4G_INFRA_SECRET_DIR:-./.infra-secrets}/keys:/run/keys:ro
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs: ["/tmp:size=64m,mode=1777"]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  mem_limit: 512m
+  cpus: 1.0
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: "3"}
+  depends_on:
+    postgres: {condition: service_healthy}
+    object-init: {condition: service_completed_successfully}
+services:
+  control:
+    <<: *app
+    ports: ["127.0.0.1:18000:8000"]
+  worker:
+    <<: *app
+    command: [python, -m, agent4good.worker]
+    stop_grace_period: 120s
+    healthcheck:
+      test: [CMD, python, -m, agent4good.healthcheck]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+  postgres:
+    image: postgres:17.11
+    environment:
+      POSTGRES_DB: agent4good
+      POSTGRES_USER: agent4good
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U agent4good -d agent4good]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 512m
+  objects:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: [server, /data, --console-address, ':9001']
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/object_root_access
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/object_root_secret
+    secrets: [object_root_access, object_root_secret]
+    volumes: [object-data:/data]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9000/minio/health/live]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 768m
+  object-init:
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      objects: {condition: service_healthy}
+    secrets: [object_root_access, object_root_secret, object_access, object_secret]
+    volumes: [./deploy/object-policy.json:/policy.json:ro]
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        mc alias set local http://objects:9000 "$$(cat /run/secrets/object_root_access)" "$$(cat /run/secrets/object_root_secret)" >/dev/null
+        mc mb --ignore-existing local/agent4good >/dev/null
+        mc admin user add local "$$(cat /run/secrets/object_access)" "$$(cat /run/secrets/object_secret)" >/dev/null
+        mc admin policy create local artifacts /policy.json >/dev/null
+        mc admin policy attach local artifacts --user "$$(cat /run/secrets/object_access)" >/dev/null
+    restart: 'no'
+secrets:
+  postgres_password: {file: '${A4G_INFRA_SECRET_DIR:-./.infra-secrets}/postgres_password'}
+  database_url: {file: '${A4G_INFRA_SECRET_DIR:-./.infra-secrets}/database_url'}
+  admin_password: {file: '${A4G_INFRA_SECRET_DIR:-./.infra-secrets}/admin_password'}
+  session_secret: {file: '${A4G_INFRA_SECRET_DIR:-./.infra-secrets}/session_secret'}
+  object_root_access: {file: '${A4G_INFRA_SECRET_DIR:-./.infra-secrets}/object_root_access'}
+  object_root_secret: {file: '${A4G_INFRA_SECRET_DIR:-./.infra-secrets}/object_root_secret'}
+  object_access: {file: '${A4G_INFRA_SECRET_DIR:-./.infra-secrets}/object_access'}
+  object_secret: {file: '${A4G_INFRA_SECRET_DIR:-./.infra-secrets}/object_secret'}
+volumes:
+  postgres-data:
+  object-data:

@@ -33,6 +33,8 @@ class Engine:
         self.provider = provider or ModelRouter(settings, self.registry.credentials, db)
 
     def claim(self):
+        if self.db.distributed:
+            return self.db.claim(self.settings)
         with self.db.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(
@@ -59,12 +61,20 @@ class Engine:
     def run(self, task_id):
         with task_lock(self.db, task_id) as acquired:
             if acquired:
-                self._guarded_run(task_id)
+                if self.db.distributed:
+                    with self.db.run_scope(task_id):
+                        self._guarded_run(task_id)
+                else:
+                    self._guarded_run(task_id)
 
     def _guarded_run(self, task_id):
         try:
             self._run(task_id)
         except Exception as exc:
+            from .postgres import LeaseLost
+
+            if isinstance(exc, LeaseLost):
+                raise
             # Provider exceptions may carry request headers. Never persist raw HTTP exceptions.
             message = (
                 str(exc)
@@ -260,6 +270,8 @@ class Engine:
             task_id = task["id"]
             with task_lock(self.db, task_id) as acquired:
                 if not acquired:
+                    continue
+                if self.db.distributed and not self.db.expire_claim(task_id):
                     continue
                 with self.db.connect() as conn:
                     conn.execute("BEGIN IMMEDIATE")

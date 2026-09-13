@@ -2,7 +2,7 @@
 
 A self-hosted AI growth and product operator. Give it an outcome, choose an agent, and review the work in one private workspace.
 
-**Status: working v0.1 release candidate, built for one owner on one host.** This is an original implementation, not a copy of Tin's private platform. Production deployment requires your own API credentials, HTTPS host, backups, and a live acceptance test. Nine specialist roles are included; they share one sequential worker.
+**Status: working v0.1 release candidate for one owner, with SQLite or an optional PostgreSQL worker stack.** This is an original implementation, not a copy of Tin's private platform. Production deployment requires your own API credentials, HTTPS host, backups, and a live acceptance test. Nine specialist roles are included. Each worker runs one task at a time; PostgreSQL permits multiple worker processes.
 
 ## What works
 
@@ -74,7 +74,7 @@ OpenAI calls use [the Responses API with function tools](https://developers.open
 ## How autonomy works
 
 ```text
-Owner task or schedule → durable queue → single worker → model proposes tools
+Owner task or schedule → durable queue → worker claims task → model proposes tools
                                        ↓
                       server validates schema and permissions
                         ↓                            ↓
@@ -157,3 +157,7 @@ OpenAI Responses and Anthropic Messages share a normalized tool contract.
 Each task pins its profile across recovery; failures never switch providers automatically.
 Connections shows all six routes, missing keys, and recorded call evidence.
 See [configuration, budgets, capability limits, and acceptance evidence](docs/model-routing.md).
+
+## Distributed deployment
+
+Use [the PostgreSQL deployment guide](docs/distributed-infrastructure.md) for independent control and worker containers, a database queue, private objects, lease recovery, and versioned migration. The original SQLite commands remain single-host only. Real service tests use scripted model answers; public production operation remains unverified.

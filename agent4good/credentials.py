@@ -187,7 +187,10 @@ class CredentialBroker:
 
     def redact(self, value):
         secrets = [self.settings.admin_password, self.settings.session_secret, *self._leased_secrets]
-        secrets.extend(getattr(self.settings, name, "") for name in PURPOSES)
+        secrets.extend(
+            getattr(self.settings, name, "")
+            for name in (*PURPOSES, "database_url", "s3_access_key", "s3_secret_key")
+        )
         if self.settings.credential_key_file:
             secrets.extend(self._decrypt(row)[0] for row in self.db.all("SELECT * FROM credentials"))
 
