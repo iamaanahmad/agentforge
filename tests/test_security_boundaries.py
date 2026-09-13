@@ -450,3 +450,20 @@ def test_redaction_retains_inflight_value_after_revocation(vault):
     assert vault.get("openai_api_key", "model", task) == secret
     CredentialBroker(vault.settings, vault.db).revoke("openai_api_key")
     assert vault.redact(secret) == "[redacted]"
+
+
+def test_child_cannot_gain_vault_access_through_role_change(vault):
+    from test_workers import spawn, active
+
+    parent = running(vault)
+    registry = ToolRegistry(vault.settings, vault.db)
+    child = spawn(registry, parent)
+    active(registry, child)
+    vault.put("openai_api_key", "synthetic-child-key", ["research_analyst"])
+    with pytest.raises(CredentialError, match="scope denied"):
+        vault.get("openai_api_key", "model", child)
+    vault.put("openai_api_key", "synthetic-child-key", ["strategist", "research_analyst"])
+    assert vault.get("openai_api_key", "model", child) == "synthetic-child-key"
+    vault.db.execute("UPDATE tasks SET status='cancelled' WHERE id=?", (parent,))
+    with pytest.raises(CredentialError, match="scope denied"):
+        vault.get("openai_api_key", "model", child)
