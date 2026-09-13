@@ -120,7 +120,10 @@ class Database:
             from .quality import initialize as initialize_quality
 
             initialize_quality(conn)
-            conn.execute("PRAGMA user_version=10")
+            from .learning import initialize as initialize_learning
+
+            initialize_learning(conn)
+            conn.execute("PRAGMA user_version=11")
             for key, value in {"name": "Agent4Good", "goal": "", "autonomy": "supervised"}.items():
                 conn.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, value))
 

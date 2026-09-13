@@ -158,7 +158,7 @@ def test_runtime_all_layers_automatic_context_and_restart(settings):
     e2 = Engine(Database(db.path), settings, p2)
     assert e2.claim() == second
     e2.run(second)
-    records = json.loads(p2.calls[0][1][0]["content"].split("\n", 1)[1])
+    records = json.loads(p2.calls[0][1][0]["content"].split("\n", 1)[1].split("\nOutcome lessons", 1)[0])
     assert {r["layer"] for r in records} >= {"semantic", "episodic"}
     assert all(
         r["id"] not in {d["id"] for d in MemoryStore(db).inspect(task_id=t) if d["layer"] == "working"}
