@@ -129,8 +129,9 @@ python3 -m venv /workspace/venv
 printf 'def add(a, b):\n    return a + b\n' > app.py
 python3 -c 'from app import add; assert add(2, 3) == 5'
 python3 -m py_compile app.py
-printf 'int main(void) {return 0;}' > hello.c
-gcc -nostdlib -static -Wl,-e,main -o hello hello.c
+ruff check app.py
+printf '.global _start\\n_start: mov $60, %%rax; xor %%rdi, %%rdi; syscall\\n' > hello.s
+gcc -nostdlib -static -o hello hello.s
 printf 'FROM scratch\nCOPY app.py /app.py\nCMD ["/app.py"]\n' > Dockerfile
 python3 -I /opt/a4g/image.py Dockerfile image.tar
 """
@@ -143,7 +144,29 @@ python3 -I /opt/a4g/image.py Dockerfile image.tar
     loaded = json.loads(
         subprocess.check_output(["docker", "image", "inspect", "agent4good-sandbox:artifact"])
     )[0]
-    assert loaded["Config"]["Cmd"] == ["/app.py"]
+    assert loaded["Config"]["Cmd"] == ["/hello"]
+    subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--memory",
+            "64m",
+            "--pids-limit",
+            "16",
+            "agent4good-sandbox:artifact",
+        ],
+        check=True,
+        timeout=15,
+        capture_output=True,
+    )
     subprocess.run(["docker", "image", "rm", "agent4good-sandbox:artifact"], check=True, capture_output=True)
 
 
