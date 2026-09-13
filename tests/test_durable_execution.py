@@ -312,3 +312,33 @@ def test_task_api_exposes_journal_only_to_owner(settings):
         assert result["plan_steps"] == []
         db.execute("UPDATE tasks SET owner_id='other' WHERE id=?", (t,))
         assert client.get("/api/tasks/" + t).status_code == 404
+
+
+def test_process_death_releases_lock_and_preserves_completed_action(settings):
+    import multiprocessing
+    import os
+
+    db, e, t = make(
+        settings,
+        FakeProvider(
+            answer(
+                calls=[
+                    call("artifact_write", {"name": "process-proof.md", "content": "survives process death"})
+                ]
+            )
+        ),
+    )
+    e.journal.observe = lambda *a, **k: os._exit(17)
+    process = multiprocessing.get_context("fork").Process(target=e.run, args=(t,))
+    process.start()
+    process.join(timeout=10)
+    if process.is_alive():
+        process.kill()
+        process.join()
+        pytest.fail("Crash test process did not exit")
+    assert process.exitcode == 17
+    assert db.one("SELECT status FROM tool_runs")["status"] == "done"
+    again = restart(db, settings, t, FakeProvider(answer("Recovered after process death")))
+    again.run(t)
+    assert db.task(t)["status"] == "done"
+    assert len(db.all("SELECT * FROM artifacts")) == 1
