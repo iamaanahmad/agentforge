@@ -41,6 +41,8 @@ TABLES = [
     "worker_context",
     "worker_messages",
     "worker_resources",
+    "memory_records",
+    "memory_migrations",
 ]
 
 
@@ -91,6 +93,9 @@ def load_tables(db, tables, objects=None):
                 conn.raw.execute(statement, [row[n] for n in names])
             if canonical(records(conn, table)) != canonical(rows):
                 raise RuntimeError("Restored records differ from the source")
+        from .memory import initialize as initialize_memory
+
+        initialize_memory(conn)
         for table in ["events", "policy_usage"]:
             conn.raw.execute(
                 sql.SQL(
@@ -108,8 +113,8 @@ def migrate_sqlite(source, backup, db):
     fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     os.close(fd)
     with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as src, sqlite3.connect(backup) as dst:
-        if src.execute("PRAGMA user_version").fetchone()[0] not in {5, 6}:
-            raise ValueError("Migration supports SQLite schema 5 or 6; upgrade the source offline first")
+        if src.execute("PRAGMA user_version").fetchone()[0] not in {5, 6, 7}:
+            raise ValueError("Migration supports SQLite schema 5, 6 or 7; upgrade the source offline first")
         src.backup(dst)
         if (
             dst.execute("PRAGMA integrity_check").fetchone()[0] != "ok"
@@ -128,7 +133,7 @@ def backup_postgres(db, destination):
         store = ObjectStore(db.config)
         for row in tables["artifact_objects"]:
             objects[row["object_key"]] = store.read(row["object_key"], row["sha256"])
-        document = {"version": 2, "tables": tables, "objects": objects}
+        document = {"version": 3, "tables": tables, "objects": objects}
         data = json.dumps(document, default=encode).encode()
     # Exclusive create prevents accidentally replacing a previous backup.
     fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -143,12 +148,13 @@ def restore_postgres(db, source):
     document = json.loads(
         Path(source).read_text(), object_hook=lambda x: decode(x) if set(x) == {"base64"} else x
     )
-    added = {"worker_nodes", "worker_context", "worker_messages", "worker_resources"}
+    workers = {"worker_nodes", "worker_context", "worker_messages", "worker_resources"}
+    memory = {"memory_records", "memory_migrations"}
     expected = set(TABLES + ["artifact_objects"])
-    if document.get("version") == 1 and set(document["tables"]) == expected - added:
-        document["tables"].update({table: [] for table in added})
-    elif document.get("version") != 2 or set(document["tables"]) != expected:
+    missing = {1: workers | memory, 2: memory, 3: set()}.get(document.get("version"))
+    if missing is None or set(document["tables"]) != expected - missing:
         raise ValueError("Unsupported backup format")
+    document["tables"].update({table: [] for table in missing})
     # Object keys are content addressed. Never write unverified or arbitrary keys.
     store = ObjectStore(db.config)
     for row in document["tables"]["artifact_objects"]:

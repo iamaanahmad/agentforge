@@ -16,6 +16,8 @@ def test_catalog_covers_categories_without_exposing_placeholders(settings):
     assert {row["category"] for row in rows} == set(CATEGORIES)
     assert {t["name"] for t in r.definitions()} == {
         "memory_read",
+        "memory_search",
+        "memory_store",
         "memory_write",
         "artifact_write",
         "worker_spawn",

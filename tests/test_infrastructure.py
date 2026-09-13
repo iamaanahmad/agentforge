@@ -402,3 +402,52 @@ def test_distributed_child_workers_and_backup(distributed, tmp_path):
     finally:
         with psycopg.connect(DSN, autocommit=True) as conn:
             conn.execute(f"DROP SCHEMA {schema} CASCADE")
+
+
+def test_layered_memory_runtime_backup_restore(distributed, tmp_path):
+    from agent4good.memory import MemoryStore
+
+    settings, db = distributed
+    store = MemoryStore(db)
+    first = store.save(
+        {"key": "architecture", "content": "PostgreSQL queue leases", "source": "docs/architecture.md"}
+    )
+    current = store.save(
+        {
+            "key": "architecture",
+            "content": "PostgreSQL durable leases",
+            "source": "owner correction",
+            "supersedes": first["id"],
+        }
+    )
+    t = db.create_task("PostgreSQL review", "Review PostgreSQL leases", "strategist", True)
+    engine = Engine(db, settings, FinalProvider())
+    assert engine.claim() == t
+    engine.run(t)
+    assert db.task(t)["status"] == "done", db.task(t)["error"]
+    assert {d["layer"] for d in store.inspect(task_id=t)} == {"working", "episodic", "semantic"}
+    backup = tmp_path / "memory-backup.json"
+    backup_postgres(db, backup)
+    document = json.loads(backup.read_text())
+    assert document["version"] == 3
+    assert len(document["tables"]["memory_records"]) >= 4
+    # Restore into a second disposable schema using the same domain and object prefix.
+    from psycopg.conninfo import make_conninfo
+
+    schema = "restored_" + uuid4().hex
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(f"CREATE SCHEMA {schema}")
+    try:
+        target_settings = settings.model_copy(
+            update={"database_url": make_conninfo(DSN, options=f"-c search_path={schema}")}
+        )
+        target = PostgresDatabase(target_settings)
+        restore_postgres(target, backup)
+        records = MemoryStore(target).search(t, "PostgreSQL", 3000)["records"]
+        assert current["id"] in {d["id"] for d in records}
+        assert first["id"] not in {d["id"] for d in records}
+        target.execute("UPDATE memory_records SET document='corrupt' WHERE id=?", (current["id"],))
+        assert current["id"] not in {d["id"] for d in MemoryStore(target).search(t, "PostgreSQL")["records"]}
+    finally:
+        with psycopg.connect(DSN, autocommit=True) as conn:
+            conn.execute(f"DROP SCHEMA {schema} CASCADE")

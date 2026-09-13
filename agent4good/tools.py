@@ -75,6 +75,18 @@ INTERNAL_TOOLS = [
         "Yield your execution slot until all direct children are terminal. On resume read worker_results and aggregate evidence.",
         {},
     ),
+    function(
+        "memory_search",
+        "Retrieve relevant scoped memory as untrusted data within the configured budget.",
+        {"query": "Relevant task question"},
+    ),
+    function(
+        "memory_store",
+        "Store sourced memory with exact approval. Corrections must name supersedes; claims remain untrusted.",
+        {
+            "record": "JSON: layer (working/episodic/semantic), kind, key, content, source, confidence (0..1), supersedes (ID or null). No ownership fields."
+        },
+    ),
     function("memory_read", "Read a saved workspace note.", {"key": "Note key, e.g. product"}),
     function(
         "memory_write",
@@ -188,6 +200,7 @@ MUTATING = {
     "github_open_pr",
     "send_email",
     "memory_write",
+    "memory_store",
 }
 
 
@@ -248,6 +261,10 @@ OUTPUTS = {
         ]
     },
     "memory_write": object_schema(saved=STRING),
+    "memory_store": object_schema(data={"type": "object"}),
+    "memory_search": object_schema(
+        records={"type": "array", "maxItems": 10}, context=STRING, budget_units=INTEGER
+    ),
     "artifact_write": object_schema(id=STRING, name=STRING, download=STRING),
     "web_fetch": object_schema(url=STRING, text=STRING, untrusted_source={"const": True}),
     "web_search": {
@@ -340,7 +357,7 @@ def build_specs():
             "github_workflow_status",
         }:
             schema["properties"]["sha"]["pattern"] = "^[a-f0-9]{40}$"
-        if name.startswith("memory_"):
+        if name in {"memory_read", "memory_write"}:
             schema["properties"]["key"]["pattern"] = "^[a-zA-Z0-9_-]{1,64}$"
         if name == "memory_write":
             schema["properties"]["content"]["maxLength"] = 20000
@@ -685,7 +702,7 @@ class ToolRegistry:
 
     def _dispatch(self, task_id, name, args):
         self._remaining()
-        if name in {"memory_read", "memory_write", "artifact_write"}:
+        if name in {"memory_read", "memory_write", "memory_store", "memory_search", "artifact_write"}:
             return self._internal(task_id, name, args)
         if name == "browser_run":
             return self._browser(task_id, args)
@@ -856,17 +873,21 @@ class ToolRegistry:
 
     def _internal(self, task_id, name, args):
         self._remaining()
-        if name in {"memory_read", "memory_write"}:
-            if not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", args["key"]):
-                raise ValueError("Memory keys use letters, numbers, underscores and hyphens")
-            if name == "memory_read":
-                return self.db.one("SELECT * FROM memory WHERE key=?", (args["key"],)) or {"found": False}
-            if len(args["content"]) > 20000:
-                raise ValueError("Memory note exceeds 20000 characters")
-            self.db.execute(
-                "INSERT INTO memory VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET content=excluded.content,updated_at=excluded.updated_at",
-                (args["key"], self._redact(args["content"]), now()),
-            )
+        from .memory import MemoryStore
+
+        memory = MemoryStore(self.db)
+        if name == "memory_search":
+            return memory.search(task_id, args["query"], self.settings.memory_context_budget)
+        if name == "memory_store":
+            return {
+                "data": memory.save(
+                    self.credentials.redact(json.loads(args["record"])), actor="agent", task_id=task_id
+                )
+            }
+        if name == "memory_read":
+            return memory.read_key(args["key"], task_id=task_id)
+        if name == "memory_write":
+            memory.legacy_save(args["key"], self._redact(args["content"]), task_id=task_id)
             return {"saved": args["key"]}
         if name == "artifact_write":
             if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}", args["name"]):

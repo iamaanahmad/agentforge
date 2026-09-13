@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ConfigDict
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from .memory import MemoryInput, MemoryStore, MemoryError
 from .catalog import AGENTS
 from .config import Settings
 from .model_config import WorkType, task_work
@@ -103,6 +104,10 @@ def create_app(settings=None):
 
     for error_type in (psycopg.Error, BotoCoreError, ClientError):
         app.add_exception_handler(error_type, storage_failure)
+
+    @app.exception_handler(MemoryError)
+    async def memory_conflict(request, exc):
+        return JSONResponse({"detail": str(exc)}, status_code=409)
 
     @app.exception_handler(QueueFull)
     async def queue_full(request, exc):
@@ -473,18 +478,46 @@ def create_app(settings=None):
 
     @app.get("/api/memory", dependencies=[Depends(auth)])
     def memory():
-        return db.all("SELECT * FROM memory ORDER BY key")
+        store = MemoryStore(db)
+        return [
+            note
+            for row in db.all("SELECT key FROM memory ORDER BY key")
+            if (note := store.read_key(row["key"])).get("found") is not False
+        ]
 
     @app.put("/api/memory/{key}", dependencies=[Depends(auth)])
     def save_memory(key: str, payload: NoteInput):
         if not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", key):
             raise HTTPException(422, "Use letters, numbers, underscores and hyphens for the note key")
-        db.execute(
-            "INSERT INTO memory VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET content=excluded.content,updated_at=excluded.updated_at",
-            (key, payload.content, now()),
-        )
+        note = MemoryStore(db).legacy_save(key, registry.credentials.redact(payload.content))
         db.event(None, "memory_updated", f"Owner updated memory: {key}")
-        return db.one("SELECT * FROM memory WHERE key=?", (key,))
+        return note
+
+    @app.get("/api/memory-records", dependencies=[Depends(auth)])
+    def memory_records(task_id: str | None = None, history: bool = False, offset: int = 0):
+        if task_id and (not db.task(task_id) or db.task(task_id)["owner_id"] != "owner"):
+            raise HTTPException(404, "Task not found")
+        return registry.credentials.redact(
+            MemoryStore(db).inspect(task_id=task_id, include_history=history, offset=max(0, offset))
+        )
+
+    @app.post("/api/memory-records", dependencies=[Depends(auth)])
+    def store_memory(payload: MemoryInput, task_id: str | None = None):
+        if task_id and (not db.task(task_id) or db.task(task_id)["owner_id"] != "owner"):
+            raise HTTPException(404, "Task not found")
+        data = registry.credentials.redact(payload.model_dump())
+        doc = MemoryStore(db).save(data, task_id=task_id)
+        db.event(task_id, "memory_updated", "Owner saved memory record " + doc["id"])
+        return doc
+
+    @app.get("/api/tasks/{task_id}/memory", dependencies=[Depends(auth)])
+    def task_memory(task_id: str, query: str = ""):
+        task = db.task(task_id)
+        if not task or task["owner_id"] != "owner":
+            raise HTTPException(404, "Task not found")
+        return registry.credentials.redact(
+            MemoryStore(db).search(task_id, query or task["prompt"], settings.memory_context_budget)
+        )
 
     @app.get("/api/schedules", dependencies=[Depends(auth)])
     def schedules():
