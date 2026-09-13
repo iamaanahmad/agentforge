@@ -36,7 +36,8 @@ Schema errors omit rejected values. Schema discovery returns copies, so callers 
 One SQLite transaction checks the active task, exact approval, previous receipt, and shared tool rate counter.
 The transaction records intent before releasing the database for adapter work.
 Mutating tools always need approval. Manual mode also requires approval for reads and artifact creation.
-An approval binds task ID, call ID, tool name, and exact arguments.
+An approval binds task ID, call ID, tool name, exact arguments, scope, expiry, and policy version.
+See [Scoped action policies](action-policies.md) for deny-first precedence, owner configuration, and shared budget reservations.
 
 A completed matching receipt returns its validated saved result without another invocation or rate charge.
 Incomplete or mismatched receipts refuse execution. A bad output can follow a successful external write.

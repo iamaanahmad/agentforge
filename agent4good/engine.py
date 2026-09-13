@@ -2,9 +2,9 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from .catalog import agent_prompt
-from .db import now, uid
+from .db import now
 from .provider import ResponsesProvider
-from .tools import ToolRegistry, validate_arguments
+from .tools import SPECS, ToolRegistry, validate_arguments
 
 SYSTEM = """
 You are an accountable AI growth and product operator for one owner.
@@ -97,42 +97,14 @@ class Engine:
                 name = call["name"]
                 args = json.loads(call["arguments"])
                 validate_arguments(name, args)
-                settings = self.db.settings()
-                if self.registry.requires_approval(name, args, settings["autonomy"]):
-                    approval = self.db.one(
-                        "SELECT * FROM approvals WHERE task_id=? AND call_id=?", (task_id, call["call_id"])
+                disposition = self.registry.policy.prepare(task_id, call["call_id"], SPECS[name], args)
+                if disposition == "deny":
+                    raise RuntimeError("Action denied by policy")
+                if disposition != "allow":
+                    self.db.event(
+                        task_id, "approval_requested", f"Owner decision required: {name} ({disposition})"
                     )
-                    if not approval:
-                        with self.db.connect() as conn:
-                            conn.execute("BEGIN IMMEDIATE")
-                            if (
-                                conn.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()[0]
-                                != "running"
-                            ):
-                                return
-                            conn.execute(
-                                "INSERT INTO approvals(id,task_id,call_id,tool,arguments,created_at) VALUES (?,?,?,?,?,?)",
-                                (
-                                    uid("approval"),
-                                    task_id,
-                                    call["call_id"],
-                                    name,
-                                    json.dumps(args, sort_keys=True),
-                                    now(),
-                                ),
-                            )
-                            conn.execute(
-                                "UPDATE tasks SET status='waiting_approval',updated_at=? WHERE id=?",
-                                (now(), task_id),
-                            )
-                        self.db.event(task_id, "approval_requested", f"Owner decision required: {name}")
-                        return
-                    if (
-                        approval["status"] != "approved"
-                        or json.loads(approval["arguments"]) != args
-                        or approval["tool"] != name
-                    ):
-                        raise RuntimeError("Approval does not match this exact action")
+                    return
                 result = self.registry.execute(name, args, task_id=task_id, call_id=call["call_id"])
                 result_json = json.dumps(result)
                 items.append(

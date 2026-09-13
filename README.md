@@ -133,3 +133,9 @@ The code is committed to your repository. No third-party open-source license is 
 All 12 implemented tools now share validated execution, exact approvals, durable receipts, and shared rate limits.
 The authenticated `/api/tools` catalog separates executable tools from planned categories.
 See [tool contracts and bounded live evidence](docs/tool-registry.md).
+
+## Scoped action policies
+
+Owner-configured rules now restrict tool execution by user, role, task, tool, environment, and action class.
+Existing exact write approvals remain mandatory. Shared limits reserve attempts, recipients, and configured cost ceilings.
+See [policy configuration and limits](docs/action-policies.md). Actual provider billing and multi-user operation remain outside this scope.

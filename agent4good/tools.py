@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from jsonschema import Draft202012Validator
 from .db import now, uid
+from .policy import PolicyEngine, PolicyError
 import http.client
 import ipaddress
 import re
@@ -188,6 +189,7 @@ class ToolSpec:
     permissions: str
     risk: str
     scopes: tuple[str, ...]
+    action_class: str = "READ"
     rate_limit: int = 60
     rate_window_seconds: int = 60
     timeout_seconds: int = 60
@@ -240,6 +242,13 @@ def build_specs():
                 "Database": ("owner workspace notes only",),
                 "Filesystem": ("owner workspace text artifacts only; no host filesystem access",),
             }[category],
+            action_class=(
+                "EXTERNAL_COMMUNICATION"
+                if name in {"send_email", "github_create_issue", "github_open_pr"}
+                else "WRITE"
+                if name in MUTATING or name == "artifact_write"
+                else "READ"
+            ),
         )
         Draft202012Validator.check_schema(schema)
         Draft202012Validator.check_schema(OUTPUTS[name])
@@ -278,6 +287,9 @@ class PinnedHTTPSConnection(http.client.HTTPSConnection):
 class ToolRegistry:
     def __init__(self, settings, db=None):
         self.settings, self.db = settings, db
+        self.policy = PolicyEngine(db, settings) if db else None
+        if db:
+            self.policy.migrate_legacy(SPECS)
 
     def availability(self, name):
         spec = SPECS[name]
@@ -635,13 +647,16 @@ class ToolRegistry:
     def execute(self, name, args, *, task_id=None, call_id=None):
         try:
             return self._invoke(name, args, task_id=task_id, call_id=call_id)
-        except Exception:
+        except Exception as exc:
             if self.db is not None:
                 known_task = task_id if isinstance(task_id, str) and self.db.task(task_id) else None
                 self.db.event(known_task, "tool_refused_or_failed", "Tool invocation did not complete")
+            if isinstance(exc, PolicyError):
+                raise ToolError(str(exc)) from exc
             raise
 
     def _invoke(self, name, args, *, task_id=None, call_id=None):
+        args = deepcopy(args)
         validate_arguments(name, args)
         if self.db is None or not task_id or not call_id:
             raise ToolError("Execution requires a workspace task and audited call ID")
@@ -650,21 +665,20 @@ class ToolRegistry:
         # One transaction binds permission, receipt and rate reservation across registry instances.
         with self.db.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            task = conn.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
+            task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
             if not task or task["status"] != "running":
                 raise ToolError("Tool execution requires an active task")
-            autonomy = conn.execute("SELECT value FROM settings WHERE key='autonomy'").fetchone()[0]
-            if self.requires_approval(name, args, autonomy):
-                approval = conn.execute(
-                    "SELECT * FROM approvals WHERE task_id=? AND call_id=?", (task_id, call_id)
-                ).fetchone()
-                if (
-                    not approval
-                    or approval["status"] != "approved"
-                    or approval["tool"] != name
-                    or json.loads(approval["arguments"]) != args
-                ):
-                    raise ToolError("Approval does not match this exact action")
+            decision = self.policy.evaluate(conn, task, spec, args)
+            self.policy.check(conn, decision, task_id, call_id, name, args)
+            conn.execute(
+                "INSERT INTO events(task_id,kind,message,created_at) VALUES (?,?,?,?)",
+                (
+                    task_id,
+                    "policy_authorized",
+                    json.dumps({"effect": decision.effect, "version": decision.version}),
+                    now(),
+                ),
+            )
             receipt = conn.execute(
                 "SELECT * FROM tool_runs WHERE task_id=? AND call_id=?", (task_id, call_id)
             ).fetchone()
@@ -680,6 +694,7 @@ class ToolRegistry:
                 return result
             if self.availability(name)[0] != "configured":
                 raise ToolError(self.availability(name)[1])
+            self.policy.reserve(conn, decision)
             key, ts = "tool:" + name, time.time()
             rate = conn.execute("SELECT * FROM rate_limits WHERE key=?", (key,)).fetchone()
             if rate and rate["resets"] > ts and rate["attempts"] >= spec.rate_limit:
@@ -700,6 +715,17 @@ class ToolRegistry:
             )
         token = DEADLINE.set(time.monotonic() + spec.timeout_seconds)
         try:
+            with self.db.connect() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                current_task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+                fresh = self.policy.evaluate(conn, current_task, spec, args)
+                if (
+                    current_task["status"] != "running"
+                    or fresh.version != decision.version
+                    or fresh.scope != decision.scope
+                ):
+                    raise ToolError("Authorization changed before dispatch")
+                self.policy.check(conn, fresh, task_id, call_id, name, args)
             result = self._dispatch(task_id, name, args)
             self._remaining()
             validate_schema(spec.output_schema, result, "output")

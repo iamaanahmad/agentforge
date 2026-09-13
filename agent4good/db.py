@@ -51,8 +51,19 @@ class Database:
                     key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, resets REAL NOT NULL);
                 CREATE INDEX IF NOT EXISTS tasks_status ON tasks(status,created_at);
                 CREATE INDEX IF NOT EXISTS events_task ON events(task_id,id);
-                PRAGMA user_version=1;
+                CREATE TABLE IF NOT EXISTS action_policy (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, document TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS policy_approvals (approval_id TEXT PRIMARY KEY REFERENCES approvals(id), fingerprint TEXT NOT NULL, expires REAL NOT NULL, signature TEXT NOT NULL, effect TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS policy_legacy (approval_id TEXT PRIMARY KEY REFERENCES approvals(id));
+                CREATE TABLE IF NOT EXISTS policy_usage (id INTEGER PRIMARY KEY, bucket TEXT NOT NULL, created_at REAL NOT NULL, calls INTEGER NOT NULL, cost INTEGER NOT NULL, recipients INTEGER NOT NULL);
+                CREATE INDEX IF NOT EXISTS policy_usage_window ON policy_usage(bucket,created_at);
             """)
+            conn.execute("BEGIN IMMEDIATE")
+            if "owner_id" not in {row["name"] for row in conn.execute("PRAGMA table_info(tasks)")}:
+                conn.execute("ALTER TABLE tasks ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'owner'")
+            if not conn.execute("SELECT 1 FROM action_policy").fetchone():
+                conn.execute("INSERT INTO action_policy VALUES (1,1,'{}')")
+                conn.execute("INSERT INTO policy_legacy SELECT id FROM approvals")
+            conn.execute("PRAGMA user_version=2")
             for key, value in {"name": "Agent4Good", "goal": "", "autonomy": "supervised"}.items():
                 conn.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, value))
 
@@ -117,4 +128,8 @@ class Database:
         )
         for row in rows:
             row["arguments"] = json.loads(row["arguments"])
+            binding = self.one(
+                "SELECT effect,expires FROM policy_approvals WHERE approval_id=?", (row["id"],)
+            )
+            row["policy"] = binding
         return rows

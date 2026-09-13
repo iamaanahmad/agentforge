@@ -16,6 +16,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .catalog import AGENTS
 from .config import Settings
 from .db import Database, now, uid
+from .policy import PolicyDocument, PolicyError
 from .tools import ToolRegistry
 
 
@@ -36,6 +37,11 @@ class NoteInput(BaseModel):
 
 class DecisionInput(BaseModel):
     decision: Literal["approve", "reject"]
+
+
+class PolicyInput(BaseModel):
+    expected_revision: int = Field(ge=1)
+    document: PolicyDocument
 
 
 class ProjectInput(BaseModel):
@@ -268,6 +274,22 @@ def create_app(settings=None):
             "Owner stopped this task. An external request already in flight may still finish.",
         )
         return db.public_task(db.task(task_id))
+
+    @app.get("/api/policy", dependencies=[Depends(auth)])
+    def get_policy():
+        with db.connect() as conn:
+            revision, document = ToolRegistry(settings, db).policy.current(conn)
+        return {"revision": revision, "document": document.model_dump()}
+
+    @app.put("/api/policy", dependencies=[Depends(auth)])
+    def put_policy(payload: PolicyInput):
+        try:
+            revision = ToolRegistry(settings, db).policy.replace(
+                payload.document.model_dump(), payload.expected_revision
+            )
+        except PolicyError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {"revision": revision, "document": payload.document.model_dump()}
 
     @app.get("/api/approvals", dependencies=[Depends(auth)])
     def approvals():
