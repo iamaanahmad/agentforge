@@ -31,6 +31,8 @@ class Database:
         self.path = str(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
+            if conn.execute("PRAGMA user_version").fetchone()[0] > 11:
+                raise RuntimeError("Database schema is newer than this release; upgrade Agent4Good")
             conn.executescript("""
                 PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);

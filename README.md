@@ -195,3 +195,9 @@ Completed, failed, and cancelled attempts retain actions, timing, costs, and ver
 Later plans can retrieve relevant outcomes and record their reported effect on the next actions.
 Owner corrections and invalidations remove stale lessons from recall. Estimates and interpretations stay explicitly unverified.
 See [outcome learning](docs/outcome-learning.md) for APIs, trust limits, migration, and tests.
+
+## Developer interfaces
+
+Use the installed `a4g` CLI, authenticated `/api/v1` API, and Python SDK for missions and recovery.
+Replay reads saved evidence without running tools. Restore refuses existing destinations.
+See [developer tools](docs/developer-tools.md) for installation, examples, safety limits, and repeatable acceptance.

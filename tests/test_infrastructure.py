@@ -683,3 +683,23 @@ def test_timeline_postgres_cursor_owner_and_restore(distributed, tmp_path):
     db.execute("UPDATE tasks SET owner_id='other' WHERE id=?", (foreign,))
     with pytest.raises(LookupError):
         read(db, credentials, task_id=foreign)
+
+
+def test_developer_postgres_projection_and_worker_readiness(distributed):
+    from agent4good.developer import replay, worker_readiness
+    from agent4good.tools import ToolRegistry
+
+    settings, db = distributed
+    registry = ToolRegistry(settings, db)
+    assert not worker_readiness(db)["online"]
+    db.heartbeat()
+    assert worker_readiness(db)["online"]
+    task_id = db.create_task("Developer PostgreSQL", "Inspect saved receipts", "strategist")
+    db.execute(
+        "INSERT INTO tool_runs(task_id,call_id,tool,arguments,status,result) VALUES (?,?,?,?,?,?)",
+        (task_id, "saved", "email_send", "{}", "done", "accepted receipt"),
+    )
+    doc = replay(db, registry.credentials, task_id)
+    assert doc["receipts"][0]["result"] == "accepted receipt"
+    assert doc["external_effects"] is False
+    assert db.task(task_id)["status"] == "draft"
