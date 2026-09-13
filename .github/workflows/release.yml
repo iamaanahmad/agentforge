@@ -1,0 +1,66 @@
+name: Release evidence
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    uses: ./.github/workflows/ci.yml
+  infrastructure:
+    uses: ./.github/workflows/infrastructure.yml
+  browser:
+    uses: ./.github/workflows/browser.yml
+  sandbox:
+    uses: ./.github/workflows/sandbox.yml
+  failures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+      - run: uv sync --frozen --group dev
+      - name: Cross-runtime failure contracts
+        run: >-
+          uv run pytest tests/test_runtime_failures.py tests/test_durable_execution.py
+          tests/test_scheduling.py tests/test_memory.py tests/test_policy.py
+          tests/test_engine.py tests/test_workers.py tests/test_release_acceptance.py
+          tests/test_evidence_gate.py -q --junitxml=failure-results.xml
+      - name: Require complete failure evidence
+        run: uv run python scripts/check_test_evidence.py failure-results.xml --require test_process_crash_compares_external_effect_and_durable_receipt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runtime-failure-acceptance
+          path: failure-results.xml
+  release-required:
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [regression, infrastructure, browser, sandbox, failures]
+    steps:
+      - name: Block release unless all required integrations passed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          assert results and all(job['result'] == 'success' for job in results.values()), results
+          print('Controlled integration release evidence passed. Live providers and production remain unverified.')
+          PY
+  release-candidate:
+    needs: release-required
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tested-release-candidate
+          path: dist/*

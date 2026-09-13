@@ -1,5 +1,5 @@
 name: Browser acceptance
-on: [push, pull_request, workflow_dispatch]
+on: [push, pull_request, workflow_dispatch, workflow_call]
 permissions:
   contents: read
 jobs:
@@ -19,6 +19,8 @@ jobs:
         run: |
           export A4G_TEST_BROWSER_IMAGE="$(docker image inspect agent4good-browser:ci --format '{{.Id}}')"
           uv run pytest tests/test_browser.py -v --junitxml=browser-results.xml
+      - name: Require real browser evidence without skips
+        run: uv run python scripts/check_test_evidence.py browser-results.xml --require test_real_runtime_approval_to_receipt_through_private_socket
       - uses: actions/upload-artifact@v4
         if: always()
         with:
