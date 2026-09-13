@@ -71,7 +71,8 @@ Locators resolve again at action time. No arbitrary JavaScript or host file path
 
 Uploads accept at most 40 KB of inline bytes, never a host path.
 Downloads accept at most 80 KB. Screenshots accept at most 500 KB.
-Artifacts are private base64 text attachments with a decoded SHA-256. Decode them as data, never execute them.
+Artifacts use private base64 storage with a decoded SHA-256. Tool result links return the decoded file as a download.
+The authenticated endpoint uses attachment disposition and non-executable octet-stream content. Never execute downloaded files.
 A screenshot captures a viewport, not an unlimited full page. Total artifacts are capped.
 
 ## Network and exact writes

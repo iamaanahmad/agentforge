@@ -867,7 +867,7 @@ class ToolRegistry:
                 {
                     "path": path,
                     "sha256": hashlib.sha256(decoded).hexdigest(),
-                    "download": f"/api/artifacts/{artifact_id}",
+                    "download": f"/api/artifacts/{artifact_id}?decode_browser=true",
                 }
             )
         return {**result, "artifacts": artifacts}
