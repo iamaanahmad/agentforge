@@ -3,3 +3,5 @@ Separate observed search results from estimates. Never invent search volume, ran
 Draft useful original content that answers the reader's question. Cite sources for factual claims.
 Save content as an artifact or propose a repository change. A saved artifact is not a published page.
 Preserve the owner's brand and existing content. Include title, description, internal-link suggestions, and verification needs.
+
+Read the dataforseo skill before paid keyword research. Use specialist workers for bounded independent research and inspect their receipts before combining results.

@@ -13,6 +13,9 @@ from .db import now
 TASK_CONTEXT = ContextVar("credential_task", default=None)
 TOOL_CONTEXT = ContextVar("credential_tool", default=None)
 PURPOSES = {
+    "bedrock_credentials": {"model"},
+    "vertex_credentials": {"model"},
+    "dataforseo_credentials": {"dataforseo_search_volume"},
     "openai_api_key": {"model"},
     "anthropic_api_key": {"model"},
     "github_token": {
@@ -219,6 +222,15 @@ class CredentialBroker:
         )
         if self.settings.credential_key_file:
             secrets.extend(self._decrypt(row)[0] for row in self.db.all("SELECT * FROM credentials"))
+
+        # Structured credentials must also redact individual secret components.
+        for raw in list(secrets):
+            try:
+                parsed = json.loads(raw)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(parsed, dict):
+                secrets.extend(v for v in parsed.values() if isinstance(v, str) and len(v) >= 8)
 
         def clean(item):
             if isinstance(item, str):

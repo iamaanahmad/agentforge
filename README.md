@@ -201,3 +201,9 @@ See [outcome learning](docs/outcome-learning.md) for APIs, trust limits, migrati
 Use the installed `a4g` CLI, authenticated `/api/v1` API, and Python SDK for missions and recovery.
 Replay reads saved evidence without running tools. Restore refuses existing destinations.
 See [developer tools](docs/developer-tools.md) for installation, examples, safety limits, and repeatable acceptance.
+
+## Cloud models and reusable skills
+
+[AWS Bedrock, Google Vertex AI, and DataForSEO setup](docs/cloud-models-and-skills.md) adds cloud text/tool adapters and ten versioned packaged workflows.
+The nine specialists reuse existing worker delegation and safety controls. DataForSEO keyword queries require an owner cost estimate and exact approval.
+Cloud account access, credit coverage, and live mission completion still require acceptance with your credentials.

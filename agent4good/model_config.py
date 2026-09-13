@@ -17,8 +17,11 @@ ROLE_WORK = {
 
 class ModelProfile(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
-    provider: Literal["openai", "anthropic"] = "openai"
+    provider: Literal["openai", "anthropic", "bedrock", "vertex"] = "openai"
     model: str = Field(min_length=1, max_length=160, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._:-]*$")
+    region: str = Field("us-east-1", pattern=r"^[a-z]{2}(?:-[a-z]+)+-[0-9]$")
+    project: str = Field("", pattern=r"^$|^[a-z][a-z0-9-]{4,61}[a-z0-9]$")
+    location: str = Field("global", pattern=r"^[a-z][a-z0-9-]{0,39}$")
     # Explicit owner declarations, not claims of provider/account verification.
     tools: bool = True
     structured_output: bool = False
@@ -30,8 +33,10 @@ class ModelProfile(BaseModel):
 
     @model_validator(mode="after")
     def capabilities(self):
-        if self.provider == "anthropic" and self.structured_output:
-            raise ValueError("This Anthropic adapter does not implement schema-constrained final output")
+        if self.provider != "openai" and self.structured_output:
+            raise ValueError("This provider adapter does not implement schema-constrained final output")
+        if self.provider == "vertex" and not self.project:
+            raise ValueError("Vertex requires a Google Cloud project ID")
         return self
 
 

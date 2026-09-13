@@ -61,9 +61,13 @@ AGENTS = [
 
 def agent_prompt(agent_id):
     agent = next(a for a in AGENTS if a["id"] == agent_id)
+    from .skills import skill_index
+
     playbook = (Path(__file__).parent / "playbooks" / (agent_id + ".md")).read_text()
     return (
         playbook
+        + "\n"
+        + skill_index()
         + "\n"
         + f"You are Agent4Good's {agent['name']}. {agent['description']} Skills: {', '.join(agent['skills'])}."
     )
