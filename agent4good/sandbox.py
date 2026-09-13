@@ -293,15 +293,28 @@ def serve():
             jobs.pop(job_id, None)
         return {"removed": True}
 
+    # Prebind: Uvicorn's uds convenience path otherwise chmods sockets to 0666.
+    import socket
+    import stat
+    if socket_path.exists() or socket_path.is_symlink():
+        if not stat.S_ISSOCK(socket_path.lstat().st_mode):
+            raise SandboxError("Refusing to replace a non-socket path")
+        socket_path.unlink()
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(socket_path))
+    os.chmod(socket_path, 0o600)
+    listener.listen(128)
     # SIGKILL recovery removes old labelled containers before accepting new work.
     try:
-        uvicorn.run(app, uds=str(socket_path), log_level="warning")
+        uvicorn.Server(uvicorn.Config(app, log_level="warning")).run(sockets=[listener])
     finally:
         for job in list(jobs.values()):
             job["cancel"].set()
         for job in list(jobs.values()):
             job["thread"].join(timeout=30)
         backend.recover()
+        listener.close()
+        socket_path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
