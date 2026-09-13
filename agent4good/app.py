@@ -324,6 +324,8 @@ def create_app(settings=None):
             "events": db.all("SELECT * FROM events WHERE task_id=? ORDER BY id", (task_id,)),
             "approvals": db.approval_list(task_id),
             "artifacts": db.all("SELECT id,name,created_at FROM artifacts WHERE task_id=?", (task_id,)),
+            "execution": db.one("SELECT * FROM executions WHERE task_id=?", (task_id,)),
+            "plan_steps": db.all("SELECT * FROM plan_steps WHERE task_id=? ORDER BY rowid", (task_id,)),
         }
 
     @app.post("/api/tasks/{task_id}/run", dependencies=[Depends(auth)])

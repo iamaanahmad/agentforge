@@ -40,7 +40,7 @@ An approval binds task ID, call ID, tool name, exact arguments, scope, expiry, a
 See [Scoped action policies](action-policies.md) for deny-first precedence, owner configuration, and shared budget reservations.
 
 A completed matching receipt returns its validated saved result without another invocation or rate charge.
-Incomplete or mismatched receipts refuse execution. A bad output can follow a successful external write.
+Incomplete writes and mismatched receipts refuse execution. Interrupted reads allow at most three attempts; invalid outputs remain held. A bad output can follow a successful external write.
 These failures stay incomplete and require inspection. They never trigger automatic external retries.
 Rate counters use the existing database table, so separate registry instances share them across restarts.
 Each tool allows 60 new attempts per 60-second window. Failed attempts consume the reserved allowance.

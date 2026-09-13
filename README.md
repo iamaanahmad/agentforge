@@ -7,7 +7,8 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 ## What works
 
 - A responsive dashboard with tasks, results, decisions, nine agents, shared memory, schedules, connections, and activity.
-- A real OpenAI Responses API tool loop with durable intermediate state, per-task step limits, and a daily run limit.
+- An OpenAI Responses API tool loop with versioned plans, checkpoint recovery, bounded retries, and execution-integrity checks.
+- Stable write identities reuse completed receipts across replanning. Ambiguous writes stop for inspection.
 - Original, editable role playbooks for strategy, research, product engineering, analytics, SEO, support, outreach, paid acquisition, and finance.
 - Owner-controlled manual, supervised, and autonomous modes. Scheduled autonomous work can run without an open browser.
 - Exact approval for every external write. The owner sees the recipient, message, branch, file content, or issue before execution.
@@ -31,7 +32,7 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 Evidence for the included paths: [API checks](tests/test_app.py), [engine checks](tests/test_engine.py),
 [tool checks](tests/test_tools.py), and [provider contract checks](tests/test_provider.py).
 [Release acceptance checks](tests/test_release_acceptance.py) restore a real SQLite backup into a separate workspace.
-They verify saved approvals, artifact retrieval, and refusal to replay interrupted work.
+They verify saved approvals, artifact retrieval, safe checkpoint recovery, and refusal to replay ambiguous writes.
 Model responses in these tests are scripted. No capability has live provider or production acceptance evidence yet.
 The missing capabilities above remain planned, not available integrations.
 
@@ -146,3 +147,5 @@ An encrypted vault now brokers credentials by owner, agent role, adapter purpose
 Keys remain outside the data volume. Signed webhooks can create drafts, with replay and rate checks.
 Existing owner deployments remain supported; multi-user and arbitrary command execution remain unavailable.
 See [migration, key rotation, and the threat model](docs/credential-security.md).
+
+See [durable execution](docs/durable-execution.md) for crash boundaries, budgets, and evidence limits.

@@ -2,6 +2,7 @@
 
 from .credentials import CredentialBroker, TASK_CONTEXT, TOOL_CONTEXT
 
+import hashlib
 import base64
 import json
 import time
@@ -177,6 +178,7 @@ CATEGORIES = (
     "Media",
     "Social/API",
 )
+ACTION_ID = ContextVar("action_id", default="")
 DEADLINE = ContextVar("tool_deadline", default=None)
 
 
@@ -596,7 +598,10 @@ class ToolRegistry:
             data = self._request(
                 "POST",
                 "https://api.resend.com/emails",
-                {"Authorization": "Bearer " + self.credentials.get("resend_api_key", "send_email")},
+                {
+                    "Authorization": "Bearer " + self.credentials.get("resend_api_key", "send_email"),
+                    "Idempotency-Key": ACTION_ID.get(),
+                },
                 {
                     "from": self.settings.mail_from,
                     "to": [args["to"]],
@@ -682,16 +687,17 @@ class ToolRegistry:
             receipt = conn.execute(
                 "SELECT * FROM tool_runs WHERE task_id=? AND call_id=?", (task_id, call_id)
             ).fetchone()
+            attempts = 0
             if receipt:
-                if (
-                    receipt["status"] != "done"
-                    or receipt["tool"] != name
-                    or receipt["arguments"] != args_json
-                ):
-                    raise ToolError("Ambiguous or mismatched tool call; inspect before retrying")
-                result = json.loads(receipt["result"])
-                validate_schema(spec.output_schema, result, "output")
-                return result
+                if receipt["tool"] != name or receipt["arguments"] != args_json:
+                    raise ToolError("Mismatched tool call; inspect before retrying")
+                if receipt["status"] == "done":
+                    result = json.loads(receipt["result"])
+                    validate_schema(spec.output_schema, result, "output")
+                    return result
+                attempts = receipt["attempts"]
+                if spec.action_class != "READ" or attempts >= 3:
+                    raise ToolError("Ambiguous tool call or retry limit; inspect before retrying")
             if self.availability(name)[0] != "configured":
                 raise ToolError(self.availability(name)[1])
             self.policy.reserve(conn, decision)
@@ -706,13 +712,15 @@ class ToolRegistry:
             else:
                 conn.execute("UPDATE rate_limits SET attempts=attempts+1 WHERE key=?", (key,))
             conn.execute(
-                "INSERT INTO tool_runs(task_id,call_id,tool,arguments,status) VALUES (?,?,?,?,'started')",
-                (task_id, call_id, name, args_json),
+                "INSERT INTO tool_runs(task_id,call_id,tool,arguments,status,attempts) VALUES (?,?,?,?,'started',?) "
+                "ON CONFLICT(task_id,call_id) DO UPDATE SET attempts=excluded.attempts",
+                (task_id, call_id, name, args_json, attempts + 1),
             )
             conn.execute(
                 "INSERT INTO events(task_id,kind,message,created_at) VALUES (?,?,?,?)",
                 (task_id, "tool_started", name, now()),
             )
+        action_token = ACTION_ID.set(hashlib.sha256((task_id + ":" + call_id).encode()).hexdigest())
         token = DEADLINE.set(time.monotonic() + spec.timeout_seconds)
         try:
             with self.db.connect() as conn:
@@ -754,8 +762,13 @@ class ToolRegistry:
                     (task_id, "tool_verified", call_id, now()),
                 )
             return result
-        except Exception:
+        except Exception as exc:
+            if isinstance(exc, ToolError) and spec.action_class == "READ":
+                self.db.execute(
+                    "UPDATE tool_runs SET attempts=3 WHERE task_id=? AND call_id=?", (task_id, call_id)
+                )
             self.db.event(task_id, "tool_failed", name + ": execution incomplete; inspect receipt")
             raise
         finally:
             DEADLINE.reset(token)
+            ACTION_ID.reset(action_token)
