@@ -429,7 +429,7 @@ def test_layered_memory_runtime_backup_restore(distributed, tmp_path):
     backup = tmp_path / "memory-backup.json"
     backup_postgres(db, backup)
     document = json.loads(backup.read_text())
-    assert document["version"] == 5
+    assert document["version"] == 6
     assert len(document["tables"]["memory_records"]) >= 4
     # Restore into a second disposable schema using the same domain and object prefix.
     from psycopg.conninfo import make_conninfo
@@ -560,6 +560,40 @@ def test_scheduler_modes_concurrency_and_restore(distributed, tmp_path):
         assert Engine(target, target_settings, FinalProvider()).schedule_due() == 0
         assert len(target.all("SELECT * FROM schedule_occurrences")) == 5
         assert len(target.all("SELECT * FROM schedule_events")) == 1
+    finally:
+        with psycopg.connect(DSN, autocommit=True) as conn:
+            conn.execute(f"DROP SCHEMA {schema} CASCADE")
+
+
+def test_quality_postgres_workers_evidence_and_restore(distributed, tmp_path):
+    from test_quality import Provider, contract, drain
+    from psycopg.conninfo import make_conninfo
+
+    settings, db = distributed
+    settings.max_daily_runs = 100
+    tid = db.create_task("Tagged quality PG", "Write accurate copy", "strategist", True, quality=contract())
+    provider = Provider(db)
+    drain(db, settings, provider)
+    assert db.task(tid)["status"] == "done", db.task(tid)["error"]
+    assert len(db.all("SELECT * FROM quality_reviews")) == 3
+    backup = tmp_path / "quality-backup.json"
+    backup_postgres(db, backup)
+    schema = "restored_" + uuid4().hex
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(f"CREATE SCHEMA {schema}")
+    try:
+        target_settings = settings.model_copy(
+            update={"database_url": make_conninfo(DSN, options=f"-c search_path={schema}")}
+        )
+        target = PostgresDatabase(target_settings)
+        restore_postgres(target, backup)
+        assert target.task(tid)["status"] == "done"
+        assert target.all("SELECT * FROM quality_rounds ORDER BY attempt") == db.all(
+            "SELECT * FROM quality_rounds ORDER BY attempt"
+        )
+        assert target.all("SELECT * FROM quality_reviews ORDER BY task_id") == db.all(
+            "SELECT * FROM quality_reviews ORDER BY task_id"
+        )
     finally:
         with psycopg.connect(DSN, autocommit=True) as conn:
             conn.execute(f"DROP SCHEMA {schema} CASCADE")

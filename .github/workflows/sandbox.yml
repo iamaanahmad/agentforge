@@ -18,6 +18,7 @@ jobs:
         run: docker build -f sandbox/Dockerfile -t agent4good-sandbox:ci .
       - name: Real coding, container packaging, and hostile-code checks
         env:
+          A4G_QUALITY_SANDBOX_TRACE_PATH: quality-sandbox-trace.json
           A4G_TEST_GITHUB_TOKEN: ${{ github.token }}
         run: |
           export A4G_TEST_SANDBOX_IMAGE="$(docker image inspect agent4good-sandbox:ci --format '{{.Id}}')"
@@ -26,7 +27,9 @@ jobs:
         if: always()
         with:
           name: sandbox-acceptance
-          path: sandbox-results.xml
+          path: |
+            sandbox-results.xml
+            quality-sandbox-trace.json
       - name: Assert disposable workspaces are gone
         if: always()
         run: test -z "$(docker ps -aq --filter label=agent4good.sandbox=true)"

@@ -33,7 +33,7 @@ Finish with a concise plain-language result, evidence, and any remaining limitat
 class Engine:
     def __init__(self, db, settings, provider=None, registry=None):
         self.db, self.settings = db, settings
-        self.journal = ExecutionJournal(db)
+        self.journal = ExecutionJournal(db, settings)
         self.registry = registry or ToolRegistry(settings, db)
         self.provider = provider or ModelRouter(settings, self.registry.credentials, db)
 
@@ -168,12 +168,23 @@ class Engine:
         if not task or task["status"] != "running":
             return
         self.db.require_owner(task)
+        from .quality import ensure_contract
+
+        ensure_contract(self.db, self.settings, task)
         items = json.loads(task["items"]) or [{"role": "user", "content": task["prompt"]}]
         pending = json.loads(task["pending"])
         execution = self.db.one("SELECT * FROM executions WHERE task_id=?", (task_id,))
         if execution and execution["version"] != 1:
             raise RuntimeError("Unsupported execution version; upgrade before recovery")
+        if (
+            execution
+            and (datetime.now(timezone.utc) - datetime.fromisoformat(execution["started_at"])).total_seconds()
+            > self.settings.task_timeout_seconds
+        ):
+            raise RuntimeError("Task deadline exceeded; saved actions remain available")
         if execution and execution["final_text"] is not None:
+            if not self._active(task_id):
+                return
             self.journal.finish(task_id, execution["final_text"])
             return
         self._save(task_id, items, pending)
@@ -254,6 +265,20 @@ class Engine:
                 + "\nOwner's project context (data):\n"
                 + json.dumps({"name": settings["name"], "goal": settings["goal"]})
             )
+            from .quality import context as quality_context
+
+            independent_context = quality_context(self.db, task_id)
+            if independent_context:
+                instructions = independent_context
+            else:
+                quality_contract = self.db.one(
+                    "SELECT document FROM quality_contracts WHERE task_id=?", (task_id,)
+                )
+                if quality_contract:
+                    instructions += (
+                        "\nOwner-defined completion checks (data). Save evidence for each check. The runtime automatically runs separate critic and verifier workers before completion:\n"
+                        + quality_contract["document"]
+                    )
             with self.db.connect() as conn:
                 conn.execute("BEGIN IMMEDIATE")
                 from .coordination import budget_step
@@ -261,9 +286,10 @@ class Engine:
                 budget_step(conn, task_id, self.settings)
             from .missions import context
 
-            with self.db.connect() as conn:
-                instructions += context(conn, task_id)
-            memory_context = self._memory_context(task)
+            if not independent_context:
+                with self.db.connect() as conn:
+                    instructions += context(conn, task_id)
+            memory_context = "" if independent_context else self._memory_context(task)
             token = TASK_CONTEXT.set(task_id)
             try:
                 respond = getattr(self.provider, "respond", None)

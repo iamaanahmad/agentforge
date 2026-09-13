@@ -310,6 +310,84 @@ def test_real_broker_socket_and_registry_receipt(real_backend, settings, monkeyp
         assert r.db.one("SELECT status FROM tool_runs WHERE tool='sandbox_run'")["status"] == "done"
         result_again = r.execute("sandbox_run", args, task_id=task, call_id="check")
         assert result_again == result
+        # The complete quality loop inspects genuine offline container receipts.
+        from agent4good.credentials import TASK_CONTEXT
+        from test_quality import Provider, drain
+
+        quality = {
+            "output_type": "software",
+            "max_revisions": 1,
+            "checks": [
+                {
+                    "id": "accurate",
+                    "description": "Actual add test passes on the exact source revision",
+                    "kind": "receipt",
+                    "subject": "sandbox_run",
+                    "equals": {"arguments.ref": ref, "result.exit_code": 0},
+                    "contains": {"arguments.script": "assert add(2,3)==5"},
+                }
+            ],
+        }
+        critical = r.db.create_task(
+            "Tagged real sandbox quality",
+            "Fix addition and run the actual assertion",
+            "product_engineer",
+            True,
+            quality=quality,
+        )
+
+        class CodingProvider(Provider):
+            def respond(self, instructions, items, tools):
+                task_id = TASK_CONTEXT.get()
+                if self.db.one("SELECT 1 FROM quality_reviews WHERE task_id=?", (task_id,)):
+                    return super().respond(instructions, items, tools)
+                if items[-1].get("type") == "function_call_output":
+                    return {
+                        "output": [],
+                        "output_text": "Inspect the saved container test receipt and calc.py.",
+                    }
+                self.builder_calls += 1
+                formula = "a + b + 1" if self.builder_calls == 1 else "a + b"
+                arguments = {
+                    "ref": ref,
+                    "script": "printf 'def add(a, b): return "
+                    + formula
+                    + "\\n' > calc.py\npython3 -c 'from calc import add; assert add(2,3)==5'",
+                    "artifacts": "calc.py",
+                }
+                call_id = "build-" + str(self.builder_calls)
+                permit(r, task_id, "sandbox_run", arguments, call_id)
+                return {
+                    "output": [
+                        {
+                            "type": "function_call",
+                            "call_id": call_id,
+                            "name": "sandbox_run",
+                            "arguments": json.dumps(arguments),
+                        }
+                    ],
+                    "output_text": "",
+                }
+
+        provider = CodingProvider(r.db)
+        # Preserve the simulated GitHub fixture only when no real scoped token exists.
+        if not os.getenv("A4G_TEST_GITHUB_TOKEN"):
+            from agent4good.tools import ToolRegistry
+
+            monkeypatch.setattr(ToolRegistry, "_github", lambda self, *a, **kw: r._github(*a, **kw))
+        settings.max_daily_runs = 100
+        drain(r.db, settings, provider)
+        assert r.db.task(critical)["status"] == "done", r.db.task(critical)["error"]
+        assert provider.builder_calls == 2
+        assert len(provider.reviewers) == 3
+        rounds = r.db.all("SELECT status FROM quality_rounds WHERE task_id=? ORDER BY attempt", (critical,))
+        assert [x["status"] for x in rounds] == ["revision", "accepted"]
+        if os.getenv("A4G_QUALITY_SANDBOX_TRACE_PATH"):
+            trace = {
+                table: r.db.all("SELECT * FROM " + table)
+                for table in ["quality_rounds", "quality_reviews", "tool_runs", "events"]
+            }
+            Path(os.environ["A4G_QUALITY_SANDBOX_TRACE_PATH"]).write_text(json.dumps(trace, indent=2))
         # Stop while running through the client protocol, not just the backend method.
         started = time.monotonic()
         with pytest.raises(SandboxError, match="stopped"):

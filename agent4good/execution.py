@@ -30,8 +30,9 @@ def task_lock(db, task_id):
 
 
 class ExecutionJournal:
-    def __init__(self, db):
+    def __init__(self, db, settings=None):
         self.db = db
+        self.settings = settings
 
     def checkpoint(self, task_id, items, pending, final_text=None):
         from .tools import SPECS
@@ -133,6 +134,9 @@ class ExecutionJournal:
     def finish(self, task_id, result):
         if not result.strip():
             raise RuntimeError("Model returned no final result")
+        from .quality import gate, snapshot
+
+        candidate = snapshot(self.db, self.settings, task_id, result)
         with self.db.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
@@ -155,6 +159,9 @@ class ExecutionJournal:
                 (task_id,),
             ).fetchone():
                 raise RuntimeError("Verification found incomplete plan steps")
+            if not gate(conn, self.db, self.settings, task, result, candidate):
+                return
+            independently_verified = candidate is not None
             conn.execute(
                 "UPDATE tasks SET status='done',result=?,error='',updated_at=? WHERE id=?",
                 (result, now(), task_id),
@@ -166,7 +173,9 @@ class ExecutionJournal:
                         {
                             "version": 1,
                             "check": "all plan steps observed; no pending or ambiguous writes",
-                            "scope": "execution integrity, not independent outcome evaluation",
+                            "scope": "independent configured outcome checks"
+                            if independently_verified
+                            else "execution integrity, not independent outcome evaluation",
                         }
                     ),
                     task_id,
@@ -178,6 +187,12 @@ class ExecutionJournal:
                 conn,
                 task_id,
                 "episodic",
-                task["title"] + "\nExecution completed; outcome is not independently verified.\n" + result,
+                task["title"]
+                + (
+                    "\nIndependent configured quality checks passed.\n"
+                    if independently_verified
+                    else "\nExecution completed; outcome is not independently verified.\n"
+                )
+                + result,
             )
         self.db.event(task_id, "completed", "Execution checks passed; review result and saved evidence")
