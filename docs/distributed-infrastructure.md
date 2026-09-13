@@ -186,3 +186,7 @@ See [PostgreSQL locking](https://www.postgresql.org/docs/current/explicit-lockin
 
 Layered memory uses PostgreSQL schema 3 and portable backup format 3.
 Older backup formats 1 and 2 remain readable. See [memory migration](layered-memory.md).
+
+## Mission persistence
+
+Missions use PostgreSQL schema 4 and backup format 4. Formats 1–3 remain readable. SQLite migration accepts versions 5–8. See [mission limits and restoration](missions.md).

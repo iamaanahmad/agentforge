@@ -2,6 +2,7 @@ import base64
 import binascii
 import hashlib
 import hmac
+import json
 import re
 import secrets
 import time
@@ -20,6 +21,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .memory import MemoryInput, MemoryStore, MemoryError
 from .catalog import AGENTS
+from . import missions
 from .config import Settings
 from .model_config import WorkType, task_work
 from .model_router import ModelRouter
@@ -30,6 +32,12 @@ from .tools import ToolRegistry
 
 class StrictInput(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+
+class MissionReview(StrictInput):
+    criterion_id: str = Field(min_length=1, max_length=40)
+    evidence: str = Field(min_length=1, max_length=4000)
+    accepted: bool
 
 
 class Login(StrictInput):
@@ -334,6 +342,80 @@ def create_app(settings=None):
     def agents():
         return AGENTS
 
+    def mission_safe(payload):
+        if registry.credentials.redact(payload) != payload:
+            raise HTTPException(400, "Credentials do not belong in mission content")
+
+    @app.get("/api/missions", dependencies=[Depends(auth)])
+    def list_missions():
+        with db.connect() as conn:
+            return [
+                missions.detail(conn, r["id"])
+                for r in conn.execute("SELECT id FROM missions ORDER BY created_at DESC LIMIT 100").fetchall()
+            ]
+
+    @app.post("/api/missions", status_code=201, dependencies=[Depends(auth)])
+    def create_mission(payload: missions.MissionInput):
+        mission_safe(payload.model_dump())
+        with db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            mission_id = missions.create(conn, payload)
+            return missions.detail(conn, mission_id)
+
+    @app.get("/api/missions/{mission_id}", dependencies=[Depends(auth)])
+    def get_mission(mission_id: str):
+        with db.connect() as conn:
+            try:
+                return missions.detail(conn, mission_id)
+            except ValueError as exc:
+                raise HTTPException(404, str(exc)) from exc
+
+    @app.post("/api/missions/{mission_id}/plan", dependencies=[Depends(auth)])
+    def plan_mission(mission_id: str, payload: missions.Plan):
+        mission_safe(payload.model_dump())
+        with db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                missions.apply_plan(conn, db, mission_id, payload)
+                missions.settle(conn)
+                return missions.detail(conn, mission_id)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/missions/{mission_id}/review", dependencies=[Depends(auth)])
+    def review_mission(mission_id: str, payload: MissionReview):
+        mission_safe(payload.model_dump())
+        if not payload.evidence.strip():
+            raise HTTPException(422, "Give the evidence behind your decision")
+        with db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            m = conn.execute("SELECT * FROM missions WHERE id=?", (mission_id,)).fetchone()
+            if not m or m["status"] in missions.CLOSED:
+                raise HTTPException(409, "Mission is closed or missing")
+            criteria = json.loads(m["spec"])["criteria"]
+            if not any(c["id"] == payload.criterion_id and c["kind"] == "owner" for c in criteria):
+                raise HTTPException(409, "Only owner-review criteria accept owner evidence")
+            conn.execute(
+                "INSERT INTO mission_reviews VALUES (?,?,?,?,?) ON CONFLICT(mission_id,criterion_id) DO UPDATE SET evidence=excluded.evidence,accepted=excluded.accepted,created_at=excluded.created_at",
+                (mission_id, payload.criterion_id, payload.evidence, int(payload.accepted), now()),
+            )
+            return missions.detail(conn, mission_id)
+
+    @app.post("/api/missions/{mission_id}/control/{action}", dependencies=[Depends(auth)])
+    def control_mission(mission_id: str, action: str):
+        if (
+            action in {"start", "resume", "replan"}
+            and not ModelRouter(settings, registry.credentials, db).readiness("planning")["available"]
+        ):
+            raise HTTPException(409, "Configure the planning model before starting missions")
+        with db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                missions.control(conn, db, mission_id, action)
+                return missions.detail(conn, mission_id)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+
     @app.get("/api/tasks", dependencies=[Depends(auth)])
     def tasks():
         return [
@@ -388,6 +470,9 @@ def create_app(settings=None):
     @app.post("/api/tasks/{task_id}/run", dependencies=[Depends(auth)])
     def run_task(task_id: str):
         task = task_or_404(task_id)
+        with db.connect() as conn:
+            if missions.mission_for(conn, task_id):
+                raise HTTPException(409, "Start mission work from its mission controls")
         if not ModelRouter(settings, registry.credentials, db).readiness(task_work(task))["available"]:
             raise HTTPException(
                 409, "Configure the selected model provider and tool support before running agents"

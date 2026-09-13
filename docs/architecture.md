@@ -8,6 +8,7 @@ The optional [distributed stack](distributed-infrastructure.md) separates contro
 - `engine.py` runs the model/tool loop. Task context, pending calls, approvals, and tool receipts survive process restarts.
 - `provider.py` implements OpenAI Responses and Anthropic Messages at fixed endpoints. `model_router.py` pins owner-selected profiles and reserves call budgets durably. Neither accepts a model-selected API host.
 - `tools.py` owns typed tool contracts, discovery, adapters, approval enforcement, rate limits, and durable execution receipts.
+- `missions.py` stores immutable mission contracts, dependent plan revisions, inherited limits, and evidence checks. See [missions](missions.md).
 - `memory.py` stores working, episodic, and semantic records with bounded retrieval, provenance, corrections, and quarantine. See [layered memory](layered-memory.md).
 - `catalog.py` and `playbooks/` supply the nine original role definitions.
 - `db.py` selects SQLite or `postgres.py`; each uses short control transactions. Network requests happen outside database transactions.
@@ -37,7 +38,7 @@ Coding execution uses a separate offline Docker broker through a private Unix so
 
 ## Data and operations
 
-SQLite WAL storage must live on a local persistent disk shared by the two processes. Do not use NFS or run multiple hosts against this database. SQLite schema version 7 adds layered memory and legacy migration markers. Version 6 added worker trees, messaging and context. Version 5 added model routing and call budgets. Version 4 added versioned execution journals, plan steps, and attempt counters. Schema version 3 added a persistent tenant/environment binding, encrypted credentials, and webhook receipts. Existing owner data migrates in place.
+SQLite WAL storage must live on a local persistent disk shared by the two processes. Do not use NFS or run multiple hosts against this database. SQLite schema version 8 adds mission contracts, plan membership, revisions and owner reviews. Version 7 added layered memory and legacy migration markers. Version 6 added worker trees, messaging and context. Version 5 added model routing and call budgets. Version 4 added versioned execution journals, plan steps, and attempt counters. Schema version 3 added a persistent tenant/environment binding, encrypted credentials, and webhook receipts. Existing owner data migrates in place.
 
 Records remain until the owner archives or removes the deployment data through a maintenance procedure. There is no automatic retention purge. Vault credentials are encrypted; other workspace records remain plaintext. Encrypt disks and backups. Private task content may be sent to the selected model provider; `store=false` does not override that provider's contractual retention policies.
 

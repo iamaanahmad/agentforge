@@ -27,7 +27,8 @@ def node(conn, task_id):
     if row:
         return row
     conn.execute(
-        "INSERT INTO worker_nodes VALUES (?,NULL,?,0,0,?)", (task_id, task_id, json.dumps(list(SPECS)))
+        "INSERT INTO worker_nodes VALUES (?,NULL,?,0,0,?)",
+        (task_id, task_id, json.dumps([t for t in SPECS if not t.startswith("mission_")])),
     )
     return conn.execute("SELECT * FROM worker_nodes WHERE task_id=?", (task_id,)).fetchone()
 
@@ -47,6 +48,9 @@ def ancestors(conn, task_id):
 
 
 def enforce(conn, task, name):
+    from .missions import guard
+
+    guard(conn, task["id"], name)
     row = conn.execute("SELECT * FROM worker_nodes WHERE task_id=?", (task["id"],)).fetchone()
     if row and name not in json.loads(row["tools"]):
         raise ValueError("Tool outside inherited worker permissions")
@@ -85,6 +89,9 @@ def dispatch(conn, db, settings, task_id, name, args):
             >= settings.max_queued_tasks
         ):
             raise ValueError("Worker queue capacity reached")
+        from .missions import child_guard
+
+        child_guard(conn, task_id, request)
         child = db.create_task(request["title"], request["prompt"], request["agent"], True, conn)
         conn.execute(
             "INSERT INTO worker_nodes VALUES (?,?,?,?,?,?)",
@@ -161,6 +168,9 @@ def dispatch(conn, db, settings, task_id, name, args):
 
 
 def settle(conn):
+    from .missions import settle as settle_missions
+
+    settle_missions(conn)
     # Cancellation/failure is transitive. A failed child does not cancel its siblings.
     for _ in range(9):
         children = conn.execute(
@@ -185,6 +195,9 @@ def settle(conn):
 
 
 def budget_step(conn, task_id, settings):
+    from .missions import reserve_step
+
+    reserve_step(conn, task_id)
     own = node(conn, task_id)
     used = conn.execute(
         "SELECT COALESCE(SUM(t.steps),0) FROM tasks t JOIN worker_nodes n ON t.id=n.task_id WHERE n.root_id=?",

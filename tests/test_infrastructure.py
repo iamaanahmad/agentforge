@@ -429,7 +429,7 @@ def test_layered_memory_runtime_backup_restore(distributed, tmp_path):
     backup = tmp_path / "memory-backup.json"
     backup_postgres(db, backup)
     document = json.loads(backup.read_text())
-    assert document["version"] == 3
+    assert document["version"] == 4
     assert len(document["tables"]["memory_records"]) >= 4
     # Restore into a second disposable schema using the same domain and object prefix.
     from psycopg.conninfo import make_conninfo
@@ -448,6 +448,59 @@ def test_layered_memory_runtime_backup_restore(distributed, tmp_path):
         assert first["id"] not in {d["id"] for d in records}
         target.execute("UPDATE memory_records SET document='corrupt' WHERE id=?", (current["id"],))
         assert current["id"] not in {d["id"] for d in MemoryStore(target).search(t, "PostgreSQL")["records"]}
+    finally:
+        with psycopg.connect(DSN, autocommit=True) as conn:
+            conn.execute(f"DROP SCHEMA {schema} CASCADE")
+
+
+def test_mission_postgres_workers_objects_and_restore(distributed, tmp_path):
+    from agent4good import missions
+    from test_missions import spec, step
+    from test_engine import FakeProvider, answer, call
+    from psycopg.conninfo import make_conninfo
+
+    settings, db = distributed
+    with db.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        mid = missions.create(conn, spec())
+        missions.apply_plan(
+            conn,
+            db,
+            mid,
+            missions.Plan(expected_revision=0, reason="Real PostgreSQL mission", steps=[step()]),
+        )
+        missions.control(conn, db, mid, "start")
+    e = Engine(
+        db,
+        settings,
+        FakeProvider(
+            answer(calls=[call("artifact_write", {"name": "report.md", "content": "checked fact"})]),
+            answer("Saved"),
+        ),
+    )
+    task = e.claim()
+    e.run(task)
+    e.claim()
+    assert db.task(task)["status"] == "done", db.task(task)["error"]
+    assert db.one("SELECT status FROM missions")["status"] == "done"
+    assert db.one("SELECT content FROM artifacts")["content"] == ""  # real private object
+    backup = tmp_path / "mission.json"
+    backup_postgres(db, backup)
+    schema = "mission_restore_" + uuid4().hex
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(f"CREATE SCHEMA {schema}")
+    try:
+        target = PostgresDatabase(
+            settings.model_copy(
+                update={"database_url": make_conninfo(DSN, options=f"-c search_path={schema}")}
+            )
+        )
+        restore_postgres(target, backup)
+        with target.connect() as conn:
+            d = missions.detail(conn, mid)
+        assert d["verification"][0]["met"]
+        assert d["revision"] == 1 and d["status"] == "done"
+        assert len(target.all("SELECT * FROM mission_plans")) == 1
     finally:
         with psycopg.connect(DSN, autocommit=True) as conn:
             conn.execute(f"DROP SCHEMA {schema} CASCADE")

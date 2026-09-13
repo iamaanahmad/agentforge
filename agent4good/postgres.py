@@ -82,7 +82,7 @@ class PostgresDatabase(Database):
                 if exists is None:
                     conn.raw.execute((Path(__file__).parent / "postgres.sql").read_text())
                 version = conn.execute("SELECT version FROM schema_version WHERE id=1").fetchone()[0]
-                if version not in {1, 2, 3}:
+                if version not in {1, 2, 3, 4}:
                     raise RuntimeError("Unsupported PostgreSQL schema version")
                 from .coordination import initialize
 
@@ -90,7 +90,10 @@ class PostgresDatabase(Database):
                 from .memory import initialize as initialize_memory
 
                 initialize_memory(conn)
-                conn.execute("UPDATE schema_version SET version=3 WHERE id=1")
+                from .missions import initialize as initialize_missions
+
+                initialize_missions(conn)
+                conn.execute("UPDATE schema_version SET version=4 WHERE id=1")
                 for key, value in {"name": "Agent4Good", "goal": "", "autonomy": "supervised"}.items():
                     conn.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, value))
                 conn.execute("INSERT OR IGNORE INTO action_policy VALUES (1,1,'{}')")
@@ -179,7 +182,7 @@ class PostgresDatabase(Database):
             if running >= settings.max_concurrent_runs or daily >= settings.max_daily_runs:
                 return None
             row = conn.execute(
-                "SELECT t.id FROM tasks t LEFT JOIN worker_nodes n ON t.id=n.task_id WHERE t.status='queued' AND t.owner_id='owner' "
+                "SELECT t.id FROM tasks t LEFT JOIN worker_nodes n ON t.id=n.task_id WHERE t.status='queued' AND t.owner_id='owner' AND NOT EXISTS (SELECT 1 FROM mission_nodes mn JOIN missions mm ON mm.id=mn.mission_id JOIN worker_nodes wn ON wn.root_id=mn.task_id WHERE wn.task_id=t.id AND mm.status!='running') "
                 "ORDER BY COALESCE(n.priority,0) DESC,t.created_at,t.id LIMIT 1 FOR UPDATE OF t SKIP LOCKED"
             ).fetchone()
             if not row:

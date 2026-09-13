@@ -5,3 +5,19 @@
 @media(max-width:760px){.sidebar{visibility:hidden}.sidebar.open{visibility:visible}}
 
 .model-routes { max-width: 900px; margin-bottom: 24px; }
+
+/* Mission controls share the task workbench's spacing and palette. */
+.mission-grid { display:grid; gap:24px; grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); }
+.mission-criterion,.mission-step { padding:16px 0; border-bottom:1px solid var(--border,#e0e5df); }
+.mission-limits { margin:24px 0; }
+.mission-limits summary,.mission-criterion summary { cursor:pointer; padding:8px 0; }
+.mission-check { display:flex; align-items:center; gap:8px; margin:8px 0; }
+.mission-check input { width:auto; }
+.mission-limits fieldset { margin:16px 0; padding:16px; border:1px solid var(--border,#e0e5df); }
+.mission-review { display:grid; gap:12px; padding:12px 0; }
+.mission-review label { display:grid; gap:8px; }
+.mission-step .row-heading,.mission-criterion .row-heading { gap:12px; align-items:start; }
+.mission-step .text-button,.mission-grid .text-button { text-align:left; white-space:normal; overflow-wrap:anywhere; }
+.mission-grid .text-button,.mission-step .text-button { border:0; background:none; padding:0; color:var(--green,#185b46); font:inherit; cursor:pointer; }
+.mission-grid p,.mission-limits p { overflow-wrap:anywhere; }
+@media(max-width:760px) { .mission-grid { gap:16px; } .mission-criterion .row-heading,.mission-step .row-heading { flex-wrap:wrap; } }

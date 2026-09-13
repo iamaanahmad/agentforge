@@ -189,6 +189,21 @@ TOOL_DEFINITIONS = [
     ),
 ]
 
+INTERNAL_TOOLS.extend(
+    [
+        function(
+            "mission_plan",
+            "Append a bounded mission DAG. request: JSON with expected_revision, reason, steps [{key,title,prompt,agent,tools,depends_on,priority}], optional retire (unstarted keys only). Original objective and criteria cannot change. Read mission_status first.",
+            {"request": "Complete plan JSON"},
+        ),
+        function(
+            "mission_status",
+            "Read the original mission, plan revision, tasks, limits and unmet evidence checks.",
+            {},
+        ),
+    ]
+)
+
 MUTATING = {
     "browser_run",
     "sandbox_run",
@@ -284,6 +299,8 @@ OUTPUTS = {
     "github_open_pr": object_schema(url=STRING, number=INTEGER, draft={"const": True}),
     "send_email": object_schema(message_id=STRING),
 }
+OUTPUTS.update({name: OUTPUTS["worker_results"] for name in ("mission_plan", "mission_status")})
+
 CATEGORIES = (
     "Browser",
     "Shell",
@@ -405,6 +422,7 @@ def build_specs():
                 else "WRITE"
                 if name in MUTATING
                 or name == "artifact_write"
+                or name == "mission_plan"
                 or name.startswith("worker_")
                 and name != "worker_results"
                 else "READ"
@@ -467,7 +485,7 @@ class ToolRegistry:
         return "configured", "Server configuration present; provider access is not yet verified"
 
     def definitions(self, task_id=None):
-        permitted = set(SPECS)
+        permitted = {t for t in SPECS if not t.startswith("mission_")}
         if task_id and self.db:
             row = self.db.one("SELECT tools FROM worker_nodes WHERE task_id=?", (task_id,))
             if row:
@@ -1102,6 +1120,21 @@ class ToolRegistry:
             if self.db is not None:
                 known_task = task_id if isinstance(task_id, str) and self.db.task(task_id) else None
                 self.db.event(known_task, "tool_refused_or_failed", "Tool invocation did not complete")
+                if known_task:
+                    from .missions import mission_for
+
+                    with self.db.connect() as conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        if (
+                            mission_for(conn, known_task)
+                            and not conn.execute(
+                                "SELECT 1 FROM tool_runs WHERE task_id=? AND call_id=?", (known_task, call_id)
+                            ).fetchone()
+                        ):
+                            conn.execute(
+                                "INSERT INTO events(task_id,kind,message,created_at) VALUES (?,'mission_call_refused','Call refused before a receipt was created',?)",
+                                (known_task, now()),
+                            )
             if isinstance(exc, PolicyError):
                 raise ToolError(str(exc)) from exc
             raise
@@ -1146,6 +1179,16 @@ class ToolRegistry:
                 attempts = receipt["attempts"]
                 if spec.action_class != "READ" or attempts >= 3:
                     raise ToolError("Ambiguous tool call or retry limit; inspect before retrying")
+            from .missions import mission_for, MEMBERS
+
+            mission = mission_for(conn, task_id)
+            if mission and name in MUTATING:
+                previous = conn.execute(
+                    f"SELECT task_id,call_id,status FROM tool_runs WHERE task_id IN ({MEMBERS}) AND tool=? AND arguments=? AND NOT (task_id=? AND call_id=?)",
+                    (mission["id"], name, args_json, task_id, call_id),
+                ).fetchone()
+                if previous:
+                    raise ToolError("Mission action already recorded; use its original task and receipt")
             if self.availability(name)[0] != "configured":
                 raise ToolError(self.availability(name)[1])
             self.policy.reserve(conn, decision)
@@ -1159,10 +1202,18 @@ class ToolRegistry:
                 )
             else:
                 conn.execute("UPDATE rate_limits SET attempts=attempts+1 WHERE key=?", (key,))
-            if name.startswith("worker_"):
-                from .coordination import dispatch
+            from .missions import reserve_tool
 
-                result = dispatch(conn, self.db, self.settings, task_id, name, args)
+            reserve_tool(conn, task_id)
+            if name.startswith(("worker_", "mission_")):
+                if name.startswith("mission_"):
+                    from .missions import dispatch
+
+                    result = dispatch(conn, self.db, task_id, name, args)
+                else:
+                    from .coordination import dispatch
+
+                    result = dispatch(conn, self.db, self.settings, task_id, name, args)
                 validate_schema(spec.output_schema, result, "output")
                 result_json = json.dumps(result)
                 if len(result_json) > 50000:

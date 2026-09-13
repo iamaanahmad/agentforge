@@ -6,7 +6,7 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 
 ## What works
 
-- A responsive dashboard with tasks, results, decisions, nine agents, shared memory, schedules, connections, and activity.
+- A responsive dashboard with missions, tasks, results, decisions, nine agents, shared memory, schedules, connections, and activity.
 - An OpenAI Responses or Anthropic Messages tool loop with versioned plans, checkpoint recovery, bounded retries, and execution-integrity checks.
 - Stable write identities reuse completed receipts across replanning. Ambiguous writes stop for inspection.
 - Original, editable role playbooks for strategy, research, product engineering, analytics, SEO, support, outreach, paid acquisition, and finance.
@@ -29,6 +29,7 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 | Paid growth and creative | Campaign plans, copy and creative briefs | Ad activation, image/video generation, real budget management |
 | Browser work | Exact-approved isolated Chromium journeys, forms, file transfer, tabs, screenshots, encrypted task sessions | Unrestricted browsing, challenge bypass, cross-task session sharing, production browser hosting |
 | Memory | Private working snapshots, past-run episodes, sourced facts, bounded lexical retrieval, versioned corrections and quarantine | Embedding search, automatic document ingestion, multi-user memory |
+| Missions | Immutable objectives and criteria, bounded dependent plans, shared limits, revisions, pause/cancel, receipt and owner evidence checks | Independent critics, semantic outcome validation, event/deadline schedule triggers |
 | Agent operations | Nine executable specialist roles, bounded child workers, durable messages and contexts, tasks, schedules, memory, approvals | Plugins/MCP, multi-tenant SaaS, SSO |
 
 Evidence for the included paths: [API checks](tests/test_app.py), [engine checks](tests/test_engine.py),
@@ -172,3 +173,5 @@ Browser setup, supported actions, network limits, and recovery: [Browser control
 ## Executable specialists
 
 [Specialist workers](docs/specialist-workers.md) adds bounded parallel delegation, private and shared context, durable messaging, priority, result collection, inherited permissions and cancellation. Real daemon restart acceptance uses scripted model responses; live provider completion remains unverified.
+
+[First-class missions](docs/missions.md) turn an objective into dependent worker tasks. Mission success requires evidence against original criteria.
