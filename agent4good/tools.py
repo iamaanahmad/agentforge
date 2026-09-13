@@ -639,9 +639,10 @@ class ToolRegistry:
             if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}", args["name"]):
                 raise ValueError("Artifact name must be a simple filename")
             artifact_id = uid("artifact")
-            self.db.execute(
-                "INSERT INTO artifacts VALUES (?,?,?,?,?)",
-                (artifact_id, task_id, args["name"], self._redact(args["content"]), now()),
+            from .artifacts import save_artifact
+
+            save_artifact(
+                self.db, self.settings, artifact_id, task_id, args["name"], self._redact(args["content"])
             )
             return {"id": artifact_id, "name": args["name"], "download": f"/api/artifacts/{artifact_id}"}
         raise ToolError("Unknown internal tool")

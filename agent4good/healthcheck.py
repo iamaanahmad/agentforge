@@ -6,7 +6,20 @@ from .config import Settings
 
 
 def main():
-    path = Settings().data_dir / "agent4good.sqlite3"
+    settings = Settings()
+    if settings.database_url:
+        import socket
+        from .postgres import PostgresDatabase
+
+        db = PostgresDatabase(settings, initialize=False)
+        row = db.one(
+            "SELECT 1 FROM workers WHERE id LIKE ? AND last_seen>EXTRACT(EPOCH FROM clock_timestamp())-30",
+            (socket.gethostname() + "-%",),
+        )
+        if not row:
+            raise SystemExit(1)
+        return
+    path = settings.data_dir / "agent4good.sqlite3"
     with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
         row = conn.execute("SELECT value FROM settings WHERE key='worker_last_seen'").fetchone()
     if not row or (datetime.now(timezone.utc) - datetime.fromisoformat(row[0])).total_seconds() > 30:

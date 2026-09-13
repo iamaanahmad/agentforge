@@ -11,6 +11,10 @@ from .db import now
 
 @contextmanager
 def task_lock(db, task_id):
+    if db.distributed:
+        with db.task_lock(task_id) as acquired:
+            yield acquired
+        return
     # Hash untrusted IDs; never use them as filesystem paths.
     path = Path(db.path).parent / ("execution-" + hashlib.sha256(task_id.encode()).hexdigest() + ".lock")
     with path.open("a") as handle:

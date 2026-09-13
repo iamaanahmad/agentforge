@@ -14,7 +14,20 @@ def uid(prefix):
 
 
 class Database:
+    distributed = False
+
+    @classmethod
+    def from_settings(cls, settings):
+        if settings.database_url:
+            from .postgres import PostgresDatabase
+
+            return PostgresDatabase(settings)
+        return cls(settings.data_dir / "agent4good.sqlite3")
+
     def __init__(self, path):
+        from pathlib import Path
+
+        path = Path(path)
         self.path = str(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:

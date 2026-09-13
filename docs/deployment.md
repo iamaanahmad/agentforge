@@ -2,7 +2,8 @@
 
 ## Deployment boundary
 
-This release targets one owner, one Linux host, one web service, and one worker. It is not a multi-tenant service. Provide a persistent local volume. Do not expose development ports to the internet.
+This guide covers the single-owner SQLite deployment on one Linux host.
+For PostgreSQL, multiple workers, and private objects, use [the distributed deployment guide](distributed-infrastructure.md). It is not a multi-tenant service. Provide a persistent local volume. Do not expose development ports to the internet.
 
 ## Local acceptance
 
@@ -47,7 +48,7 @@ Restore procedure:
 - `queued` with worker offline: restart the worker and inspect container health.
 - Connection configured but HTTP error: check provider permissions, billing, rate limits, and resource scope. Configuration is not proof of access.
 - Invalid host or sign-in failure: verify exact allowed hosts, HTTPS origin, secure cookies, and reverse-proxy routing.
-- Duplicate worker: the second process exits because the file lock is held. Do not scale the worker service.
+- Duplicate worker: the second process exits because the file lock is held. Do not scale the SQLite worker service.
 
 Before upgrades, back up the database and retain the prior image. Schema version 3 preserves owner data and binds the database to its configured tenant and environment. Existing sessions require fresh login. Read [vault migration notes](credential-security.md) before changing configuration.
 

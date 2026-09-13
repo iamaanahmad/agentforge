@@ -43,7 +43,7 @@ def main():
             os.fsync(stream.fileno())
         print("Created a private key file. Configure A4G_CREDENTIAL_KEY_FILE to use it.")
         return
-    db = Database(settings.data_dir / "agent4good.sqlite3")
+    db = Database.from_settings(settings)
     broker = CredentialBroker(settings, db)
     if args.command == "put":
         value = sys.stdin.read(8194).rstrip("\n") if args.stdin else getpass("Credential value: ")

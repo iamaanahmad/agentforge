@@ -79,7 +79,7 @@ class SchedulePatch(StrictInput):
 
 def create_app(settings=None):
     settings = settings or Settings()
-    db = Database(settings.data_dir / "agent4good.sqlite3")
+    db = Database.from_settings(settings)
     registry = ToolRegistry(settings, db)
     app = FastAPI(title="Agent4Good", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.db, app.state.settings = db, settings
@@ -89,6 +89,22 @@ def create_app(settings=None):
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, exc):
         return JSONResponse({"detail": "Invalid request fields or values"}, status_code=422)
+
+    import psycopg
+    from botocore.exceptions import BotoCoreError, ClientError
+    from .postgres import QueueFull
+
+    async def storage_failure(request, exc):
+        return JSONResponse(
+            {"detail": "Storage unavailable; retry after the service recovers"}, status_code=503
+        )
+
+    for error_type in (psycopg.Error, BotoCoreError, ClientError):
+        app.add_exception_handler(error_type, storage_failure)
+
+    @app.exception_handler(QueueFull)
+    async def queue_full(request, exc):
+        return JSONResponse({"detail": str(exc)}, status_code=429)
 
     @app.exception_handler(CredentialError)
     async def credential_failure(request, exc):
@@ -163,7 +179,18 @@ def create_app(settings=None):
     @app.get("/healthz")
     def health():
         db.one("SELECT 1 AS ok")
+        if db.distributed:
+            from .artifacts import ObjectStore
+
+            ObjectStore(settings).health()
         return {"status": "ok"}
+
+    @app.get("/api/infrastructure", dependencies=[Depends(auth)])
+    def infrastructure():
+        return {
+            "backend": "postgresql" if db.distributed else "sqlite",
+            "metrics": db.metrics() if db.distributed else {},
+        }
 
     @app.post("/api/login")
     def login(payload: Login, request: Request, response: Response):
@@ -342,7 +369,9 @@ def create_app(settings=None):
             "model_calls": db.all(
                 "SELECT * FROM model_calls WHERE task_id=? ORDER BY created_at", (task_id,)
             ),
-            "plan_steps": db.all("SELECT * FROM plan_steps WHERE task_id=? ORDER BY rowid", (task_id,)),
+            "plan_steps": db.all(
+                "SELECT * FROM plan_steps WHERE task_id=? ORDER BY revision,action_id", (task_id,)
+            ),
         }
 
     @app.post("/api/tasks/{task_id}/run", dependencies=[Depends(auth)])
@@ -513,8 +542,10 @@ def create_app(settings=None):
             raise HTTPException(404, "Artifact not found")
         task_or_404(row["task_id"])
         # Always attachment + plain text: generated HTML must never execute on the application origin.
+        from .artifacts import read_artifact
+
         return Response(
-            row["content"],
+            read_artifact(db, settings, row),
             media_type="text/plain",
             headers={"Content-Disposition": f'attachment; filename="{row["name"]}"'},
         )
