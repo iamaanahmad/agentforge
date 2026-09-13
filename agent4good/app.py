@@ -18,6 +18,8 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .catalog import AGENTS
 from .config import Settings
+from .model_config import WorkType, task_work
+from .model_router import ModelRouter
 from .db import Database, now, uid
 from .policy import PolicyDocument, PolicyError
 from .tools import ToolRegistry
@@ -36,6 +38,7 @@ class TaskInput(StrictInput):
     prompt: str = Field(min_length=1, max_length=20000)
     agent: str = "strategist"
     start: bool = False
+    work_type: WorkType | None = None
 
 
 class WebhookTask(StrictInput):
@@ -268,10 +271,7 @@ def create_app(settings=None):
                 "completed": counts.get("done", 0),
             },
             "worker": worker_status(),
-            "provider": {
-                "configured": registry.credentials.configured("openai_api_key"),
-                "model": settings.model,
-            },
+            "provider": ModelRouter(settings, registry.credentials, db).readiness("planning"),
             "recent_events": db.all(
                 "SELECT * FROM events WHERE task_id IS NULL OR task_id IN (SELECT id FROM tasks WHERE owner_id='owner') ORDER BY id DESC LIMIT 15"
             ),
@@ -282,7 +282,10 @@ def create_app(settings=None):
         return {
             "database": True,
             "worker": worker_status(),
-            "model_configured": registry.credentials.configured("openai_api_key"),
+            "model_configured": ModelRouter(settings, registry.credentials, db).readiness("planning")[
+                "available"
+            ],
+            "model_routes": ModelRouter(settings, registry.credentials, db).routes(),
             "secure_cookies": settings.secure_cookies,
             "max_steps": settings.max_steps,
             "max_daily_runs": settings.max_daily_runs,
@@ -311,9 +314,19 @@ def create_app(settings=None):
             raise HTTPException(400, "Credentials do not belong in request content")
         if not payload.title.strip() or not payload.prompt.strip():
             raise HTTPException(422, "Title and instructions cannot be blank")
-        if payload.start and not registry.credentials.configured("openai_api_key"):
-            raise HTTPException(409, "Configure OpenAI before running a task. You can still save a draft.")
-        task_id = db.create_task(payload.title.strip(), payload.prompt.strip(), payload.agent, payload.start)
+        route = ModelRouter(settings, registry.credentials, db).readiness(task_work(payload.model_dump()))
+        if payload.start and not route["available"]:
+            raise HTTPException(
+                409,
+                "Configure the selected model provider and tool support before running. You can still save a draft.",
+            )
+        task_id = db.create_task(
+            payload.title.strip(),
+            payload.prompt.strip(),
+            payload.agent,
+            payload.start,
+            work_type=payload.work_type,
+        )
         return db.public_task(db.task(task_id))
 
     @app.get("/api/tasks/{task_id}", dependencies=[Depends(auth)])
@@ -325,14 +338,20 @@ def create_app(settings=None):
             "approvals": db.approval_list(task_id),
             "artifacts": db.all("SELECT id,name,created_at FROM artifacts WHERE task_id=?", (task_id,)),
             "execution": db.one("SELECT * FROM executions WHERE task_id=?", (task_id,)),
+            "model_route": db.one("SELECT * FROM model_routes WHERE task_id=?", (task_id,)),
+            "model_calls": db.all(
+                "SELECT * FROM model_calls WHERE task_id=? ORDER BY created_at", (task_id,)
+            ),
             "plan_steps": db.all("SELECT * FROM plan_steps WHERE task_id=? ORDER BY rowid", (task_id,)),
         }
 
     @app.post("/api/tasks/{task_id}/run", dependencies=[Depends(auth)])
     def run_task(task_id: str):
-        task_or_404(task_id)
-        if not registry.credentials.configured("openai_api_key"):
-            raise HTTPException(409, "Configure A4G_OPENAI_API_KEY on the server before running agents")
+        task = task_or_404(task_id)
+        if not ModelRouter(settings, registry.credentials, db).readiness(task_work(task))["available"]:
+            raise HTTPException(
+                409, "Configure the selected model provider and tool support before running agents"
+            )
         if not db.execute(
             "UPDATE tasks SET status='queued',updated_at=? WHERE id=? AND status='draft'", (now(), task_id)
         ):

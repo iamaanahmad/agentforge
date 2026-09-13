@@ -7,7 +7,7 @@ A self-hosted AI growth and product operator. Give it an outcome, choose an agen
 ## What works
 
 - A responsive dashboard with tasks, results, decisions, nine agents, shared memory, schedules, connections, and activity.
-- An OpenAI Responses API tool loop with versioned plans, checkpoint recovery, bounded retries, and execution-integrity checks.
+- An OpenAI Responses or Anthropic Messages tool loop with versioned plans, checkpoint recovery, bounded retries, and execution-integrity checks.
 - Stable write identities reuse completed receipts across replanning. Ambiguous writes stop for inspection.
 - Original, editable role playbooks for strategy, research, product engineering, analytics, SEO, support, outreach, paid acquisition, and finance.
 - Owner-controlled manual, supervised, and autonomous modes. Scheduled autonomous work can run without an open browser.
@@ -56,7 +56,7 @@ In a second terminal:
 uv run python -m agent4good.worker
 ```
 
-Open `http://localhost:8000`. You can save drafts, memory, and schedules without provider keys. Starting an AI task requires an OpenAI key. There is no mock success mode in the application. Tests use explicit fake providers and cannot send email or spend money.
+Open `http://localhost:8000`. You can save drafts, memory, and schedules without provider keys. Starting an AI task requires the key for its selected provider. There is no mock success mode in the application. Tests use explicit fake providers and cannot send email or spend money.
 
 Configure optional services using `.env.example`. Restart **both** processes after changing server configuration. Secrets never belong in task instructions, memory, screenshots, or git. Rotate the session secret to invalidate all existing sessions.
 
@@ -64,7 +64,7 @@ Configure optional services using `.env.example`. Restart **both** processes aft
 
 1. Add your product description in Memory under `product`.
 2. Set your goal in Settings. Keep supervised mode while learning the workflow.
-3. Connect OpenAI using the server environment. A configured flag does not prove the key is valid.
+3. Configure your model provider using the server environment. A configured flag does not prove the key is valid.
 4. Create a small task, such as: “Use my product note to draft three positioning options. Save a Markdown report.”
 5. Read the result and artifact. For connected actions, inspect the exact values in Decisions before approving.
 6. Set provider-side spending limits before enabling recurring autonomous runs.
@@ -149,3 +149,11 @@ Existing owner deployments remain supported; multi-user and arbitrary command ex
 See [migration, key rotation, and the threat model](docs/credential-security.md).
 
 See [durable execution](docs/durable-execution.md) for crash boundaries, budgets, and evidence limits.
+
+## Model routing
+
+Assign independent models to planning, coding, browsing, research, summarization, and verification.
+OpenAI Responses and Anthropic Messages share a normalized tool contract.
+Each task pins its profile across recovery; failures never switch providers automatically.
+Connections shows all six routes, missing keys, and recorded call evidence.
+See [configuration, budgets, capability limits, and acceptance evidence](docs/model-routing.md).
