@@ -30,6 +30,7 @@ def test_bedrock_roundtrip_and_no_ambient_identity(settings, monkeypatch):
     )
     profile = ModelProfile(provider="bedrock", model="example-model", region="us-east-1")
     sent = []
+    closed = []
     turn = {
         "role": "assistant",
         "content": [
@@ -39,11 +40,8 @@ def test_bedrock_roundtrip_and_no_ambient_identity(settings, monkeypatch):
     }
 
     class Client:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
+        def close(self):
+            closed.append(True)
 
         def converse(self, **body):
             sent.append(body)
@@ -73,6 +71,7 @@ def test_bedrock_roundtrip_and_no_ambient_identity(settings, monkeypatch):
     assert sent[1]["messages"][1] == turn
     assert sent[1]["messages"][2]["content"][0]["toolResult"]["toolUseId"] == "call1"
     assert result["usage"]["total_tokens"] == 11
+    assert len(closed) == 2
 
 
 def test_vertex_preserves_signature_and_tool_result(settings, monkeypatch):
@@ -309,10 +308,7 @@ def test_cloud_engine_executes_skill_and_saves_result(settings, monkeypatch, pro
         ]
 
         class Client:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *args):
+            def close(self):
                 pass
 
             def converse(self, **kwargs):
