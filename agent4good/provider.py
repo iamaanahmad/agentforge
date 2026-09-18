@@ -5,6 +5,7 @@ Errors carry safe categories, never provider bodies or request headers.
 """
 
 import json
+from contextlib import closing
 from typing import Protocol
 import httpx
 from jsonschema import Draft202012Validator, ValidationError, SchemaError
@@ -448,19 +449,21 @@ class BedrockProvider(CloudProvider):
                 ]
             }
         try:
-            with boto3.client(
-                "bedrock-runtime",
-                region_name=self.profile.region,
-                endpoint_url=f"https://bedrock-runtime.{self.profile.region}.amazonaws.com",
-                aws_access_key_id=secret["access_key_id"],
-                aws_secret_access_key=secret["secret_access_key"],
-                aws_session_token=secret.get("session_token"),
-                config=Config(
-                    connect_timeout=min(10, self.profile.timeout_seconds),
-                    read_timeout=self.profile.timeout_seconds,
-                    retries={"total_max_attempts": 1},
-                    proxies={},
-                ),
+            with closing(
+                boto3.client(
+                    "bedrock-runtime",
+                    region_name=self.profile.region,
+                    endpoint_url=f"https://bedrock-runtime.{self.profile.region}.amazonaws.com",
+                    aws_access_key_id=secret["access_key_id"],
+                    aws_secret_access_key=secret["secret_access_key"],
+                    aws_session_token=secret.get("session_token"),
+                    config=Config(
+                        connect_timeout=min(10, self.profile.timeout_seconds),
+                        read_timeout=self.profile.timeout_seconds,
+                        retries={"total_max_attempts": 1},
+                        proxies={},
+                    ),
+                )
             ) as client:
                 check_cancelled(cancelled)
                 data = client.converse(**body)
