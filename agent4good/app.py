@@ -460,7 +460,10 @@ def create_app(settings=None):
 
     @app.get("/api/chats", dependencies=[Depends(auth)])
     def chats():
-        return db.all("""SELECT t.id,t.title,t.status,t.updated_at,
+        return db.all("""SELECT t.id,t.title,
+            COALESCE((SELECT r.status FROM conversation_turns c JOIN tasks r ON r.id=c.task_id
+                WHERE c.root_id=t.id ORDER BY c.created_at DESC,c.task_id DESC LIMIT 1),t.status) AS status,
+            t.updated_at,
             COALESCE((SELECT MAX(c.created_at) FROM conversation_turns c WHERE c.root_id=t.id),t.created_at) AS last_message_at
             FROM tasks t WHERE t.owner_id='owner'
             AND NOT EXISTS (SELECT 1 FROM conversation_turns c WHERE c.task_id=t.id)

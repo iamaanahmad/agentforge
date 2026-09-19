@@ -98,8 +98,9 @@ def follow_up(db, task_id, request_id, content, mode):
         for t in evidence["recent_messages"]:
             t["you"], t["assistant"] = t["you"][:2000], (t["assistant"] or "")[-4000:]
         question_rows = conn.execute(
-            "SELECT question,answer FROM owner_questions WHERE task_id=? ORDER BY created_at LIMIT 20",
-            (root["id"],),
+            """SELECT question,answer FROM owner_questions WHERE task_id=? OR task_id IN
+                (SELECT task_id FROM conversation_turns WHERE root_id=?) ORDER BY created_at DESC,id DESC LIMIT 20""",
+            (root["id"], root["id"]),
         ).fetchall()
         evidence["owner_answers"] = [
             {"question": q["question"][:2000], "answer": (q["answer"] or "")[:4000]} for q in question_rows

@@ -193,3 +193,17 @@ def test_question_does_not_inherit_work_quality_defaults(settings):
     e.run(tid)
     assert db.task(tid)["status"] == "done"
     assert not db.all("SELECT * FROM quality_contracts WHERE task_id=?", (tid,))
+
+
+def test_followup_question_answers_remain_in_context(settings):
+    db = Database(settings.data_dir / "chat.sqlite3")
+    root = completed(db)
+    tid = conversations.follow_up(db, root, "request-0001", "Revise this", "work")
+    e = Engine(db, settings, FakeProvider(answer(calls=[call("ask_owner", {"question": "Which revision?"})])))
+    assert e.claim() == tid
+    e.run(tid)
+    q = db.one("SELECT * FROM owner_questions WHERE task_id=?", (tid,))
+    conversations.answer(db, tid, q["id"], "Use the cobalt edition")
+    db.execute("UPDATE tasks SET status='done',result='Saved' WHERE id=?", (tid,))
+    followup = conversations.follow_up(db, root, "request-0002", "Which edition did I choose?", "ask")
+    assert "Use the cobalt edition" in db.task(followup)["prompt"]
