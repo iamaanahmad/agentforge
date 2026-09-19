@@ -808,6 +808,20 @@ def create_app(settings=None):
     def autogpt_comparison():
         return FileResponse(static / "compare" / "autogpt.html")
 
+    legal = Path(__file__).parent / "legal"
+
+    @app.get("/terms")
+    def terms():
+        return FileResponse(legal / "terms.html")
+
+    @app.get("/privacy")
+    def privacy():
+        return FileResponse(legal / "privacy.html")
+
+    @app.get("/legal.css")
+    def legal_styles():
+        return FileResponse(legal / "legal.css", media_type="text/css")
+
     @app.get("/")
     def index():
         return FileResponse(static / "index.html")
