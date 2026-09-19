@@ -2,6 +2,7 @@
 // Drafts stay in memory, scoped to a conversation, and disappear on sign-out.
 const chatDrafts = new Map(), answerDrafts = new Map();
 let chatSelected = '', chatEpoch = 0, chatBusy = false, chatData = null, chatPoll = false;
+function chatText(value){return escapeHTML(value).replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/`([^`\n]+)`/g,'<code>$1</code>');}
 const chatClosed = s => ['done','failed','cancelled'].includes(s);
 function chatRoute() { return location.hash.startsWith('#chats') ? location.hash.split('/')[1] || '' : ''; }
 function clearChats() { chatEpoch++; chatSelected=''; chatData=null; chatDrafts.clear();answerDrafts.clear(); }
@@ -27,16 +28,19 @@ async function refreshChat() {
     chatData=data;
     if(data.root_id!==selected){location.hash='chats/'+data.root_id;return;}
     const latest=data.runs.at(-1), active=data.runs.filter(r=>!chatClosed(r.status));
-    $('#chat-header').innerHTML=`<div class="chat-title"><h2>${escapeHTML(data.title)}</h2><button class="text-link" data-task="${escapeHTML(latest.task_id)}">Work and decisions ↗</button></div><div class="chat-status">${badge(latest.status)}<span>${latest.status==='waiting_input'?'Your answer will resume this task.':latest.status==='waiting_approval'?'Open work and decisions to review the exact action.':latest.status==='queued'?'Your message is saved. The worker will reply here.':latest.status==='running'?'Your agent is working. This view updates automatically.':latest.status==='draft'?'Start this draft from Work and decisions.':'History is saved in your workspace.'}</span>${active.map(r=>r.status==='draft'?'':`<button class="text-link" data-chat-stop="${escapeHTML(r.task_id)}">Stop ${r.mode==='ask'?'reply':'work'}</button>`).join('')}</div><details class="chat-events"><summary>Recent progress</summary>${events(latest.events || [])}</details>`;
+    const progressOpen=$('#chat-header details')?.open;
+    $('#chat-header').innerHTML=`<div class="chat-title"><h2>${escapeHTML(data.title)}</h2><button class="text-link" data-task="${escapeHTML(latest.task_id)}">Work and decisions ↗</button></div><div class="chat-status">${badge(latest.status)}<span>${latest.status==='waiting_input'?'Your answer will resume this task.':latest.status==='waiting_approval'?'Open work and decisions to review the exact action.':latest.status==='queued'?'Your message is saved. The worker will reply here.':latest.status==='running'?'Your agent is working. This view updates automatically.':latest.status==='draft'?'Start this draft from Work and decisions.':'History is saved in your workspace.'}</span>${active.map(r=>r.status==='draft'?'':`<button class="text-link" data-chat-stop="${escapeHTML(r.task_id)}">Stop ${r.mode==='ask'?'reply':'work'}</button>`).join('')}</div><details class="chat-events" ${progressOpen?'open':''}><summary>Recent progress</summary>${events(latest.events || [])}</details>`;
     const box=$('#chat-messages'), atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<80;
-    const html=data.messages.map(m=>`<article class="chat-message chat-${m.role}" data-message-id="${escapeHTML(m.id)}"><div class="chat-message-meta"><strong>${m.role==='user'?'You':m.role==='assistant'?'Agent4Good':'Run update'}</strong><time>${time(m.created_at)}</time></div><div class="chat-message-body">${escapeHTML(m.content)}</div>${m.needs_answer?'<p class="chat-question-label">Waiting for your answer below</p>':''}</article>`).join('');
-    if(box.innerHTML!==html){box.innerHTML=html;if(atBottom)box.scrollTop=box.scrollHeight;}
+    const html=data.messages.map(m=>`<article class="chat-message chat-${m.role}" data-message-id="${escapeHTML(m.id)}"><div class="chat-message-meta"><strong>${m.role==='user'?'You':m.role==='assistant'?'Agent4Good':'Run update'}</strong><time>${time(m.created_at)}</time></div><div class="chat-message-body">${chatText(m.content)}</div>${m.needs_answer?'<p class="chat-question-label">Waiting for your answer below</p>':''}</article>`).join('');
+    const changed=box.innerHTML!==html;
+    if(changed)box.innerHTML=html;
     const questions=data.messages.filter(m=>m.needs_answer), questionKey=questions.map(q=>q.id).join(',');
     if($('#chat-questions').dataset.key!==questionKey){
       $('#chat-questions').dataset.key=questionKey;
       $('#chat-questions').innerHTML=questions.map(q=>`<form class="chat-answer" data-question="${escapeHTML(q.question_id)}" data-run="${escapeHTML(q.task_id)}"><label for="answer-${escapeHTML(q.id)}">${escapeHTML(q.content)}</label><textarea id="answer-${escapeHTML(q.id)}" name="content" required maxlength="10000" rows="2" placeholder="Your answer. Never paste credentials.">${escapeHTML(answerDrafts.get(q.id)||'')}</textarea><button class="primary" type="submit">Answer and resume</button><p class="error" role="alert"></p></form>`).join('');
     }
     $('#chat-compose').hidden=questions.length>0;
+    if(changed&&atBottom)requestAnimationFrame(()=>{if(epoch===chatEpoch)box.scrollTop=box.scrollHeight;});
     const busyFollowup=data.runs.slice(1).some(r=>!chatClosed(r.status));
     $('#chat-compose button').disabled=chatBusy||busyFollowup;
     $('#chat-connection').textContent=busyFollowup&&!questions.length?'Waiting for the current reply. You can write your next message while it runs.':'Saved history · updates every 3 seconds';
