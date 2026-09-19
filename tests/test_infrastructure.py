@@ -429,7 +429,7 @@ def test_layered_memory_runtime_backup_restore(distributed, tmp_path):
     backup = tmp_path / "memory-backup.json"
     backup_postgres(db, backup)
     document = json.loads(backup.read_text())
-    assert document["version"] == 7
+    assert document["version"] == 8
     assert len(document["tables"]["memory_records"]) >= 4
     # Restore into a second disposable schema using the same domain and object prefix.
     from psycopg.conninfo import make_conninfo
@@ -703,3 +703,44 @@ def test_developer_postgres_projection_and_worker_readiness(distributed):
     assert doc["receipts"][0]["result"] == "accepted receipt"
     assert doc["external_effects"] is False
     assert db.task(task_id)["status"] == "draft"
+
+
+def test_conversations_postgres_question_recovery_and_backup(distributed, tmp_path):
+    from agent4good import conversations
+    from test_engine import FakeProvider, answer, call
+    from psycopg.conninfo import make_conninfo
+
+    settings, db = distributed
+    tid = db.create_task("Tagged chat PG", "Ask a question", "strategist", True)
+    engine = Engine(
+        db, settings, FakeProvider(answer(calls=[call("ask_owner", {"question": "Which audience?"})]))
+    )
+    assert engine.claim() == tid
+    engine.run(tid)
+    assert db.task(tid)["status"] == "waiting_input"
+    q = db.one("SELECT * FROM owner_questions")
+    conversations.answer(db, tid, q["id"], "Developers")
+    engine = Engine(db, settings, FakeProvider(answer("For developers")))
+    assert engine.claim() == tid
+    engine.run(tid)
+    assert db.task(tid)["status"] == "done"
+    follow = conversations.follow_up(db, tid, "request-0001", "Explain", "ask")
+    assert conversations.follow_up(db, tid, "request-0001", "Explain", "ask") == follow
+    backup = tmp_path / "chat-backup.json"
+    backup_postgres(db, backup)
+    schema = "restored_" + uuid4().hex
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(f"CREATE SCHEMA {schema}")
+    try:
+        target = PostgresDatabase(
+            settings.model_copy(
+                update={"database_url": make_conninfo(DSN, options=f"-c search_path={schema}")}
+            )
+        )
+        restore_postgres(target, backup)
+        assert target.all("SELECT * FROM owner_questions") == db.all("SELECT * FROM owner_questions")
+        assert target.all("SELECT * FROM conversation_turns") == db.all("SELECT * FROM conversation_turns")
+        assert conversations.transcript(target, tid)["root_id"] == tid
+    finally:
+        with psycopg.connect(DSN, autocommit=True) as conn:
+            conn.execute(f"DROP SCHEMA {schema} CASCADE")

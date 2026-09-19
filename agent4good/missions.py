@@ -440,7 +440,7 @@ def settle(conn):
                 )
         results = verify(conn, m)
         active = conn.execute(
-            f"SELECT 1 FROM tasks WHERE id IN ({MEMBERS}) AND status IN ('queued','running','waiting_approval','waiting_children')",
+            f"SELECT 1 FROM tasks WHERE id IN ({MEMBERS}) AND status IN ('queued','running','waiting_approval','waiting_children','waiting_input')",
             (m["id"],),
         ).fetchone()
         if not active:

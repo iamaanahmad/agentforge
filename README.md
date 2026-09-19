@@ -207,3 +207,5 @@ See [developer tools](docs/developer-tools.md) for installation, examples, safet
 [AWS Bedrock, Google Vertex AI, and DataForSEO setup](docs/cloud-models-and-skills.md) adds cloud text/tool adapters and ten versioned packaged workflows.
 The nine specialists reuse existing worker delegation and safety controls. DataForSEO keyword queries require an owner cost estimate and exact approval.
 Cloud account access, credit coverage, and live mission completion still require acceptance with your credentials.
+
+See [Task conversations](docs/task-conversations.md) for separate chats, follow-up work, and agent questions.

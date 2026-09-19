@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: node --check agent4good/static/app.js
+      - run: node --check agent4good/static/app.js && node --check agent4good/static/chats.js
       - run: uv build
       - name: Prove installed developer and recovery tools
         run: |

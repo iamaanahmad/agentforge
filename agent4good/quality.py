@@ -83,6 +83,9 @@ def ensure_contract(db, settings, task):
     """Pin server defaults on first execution only; never retrofit owner history."""
     from .model_config import task_work
 
+    turn = db.one("SELECT mode FROM conversation_turns WHERE task_id=?", (task["id"],))
+    if turn and turn["mode"] == "ask":
+        return
     document = settings.quality_defaults.get(task_work(task))
     if document is None:
         return

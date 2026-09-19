@@ -114,7 +114,7 @@ def test_backup_migration_restore_preserves_receipts(settings, tmp_path):
     db.execute("INSERT INTO settings VALUES ('worker_last_seen',?)", (now(),))
     db.execute("PRAGMA user_version=10")
     backup = tmp_path / "before.sqlite3"
-    assert maintenance.migrate(settings, backup)["schema_version"] == 11
+    assert maintenance.migrate(settings, backup)["schema_version"] == 12
     assert maintenance.sqlite_info(backup)["schema_version"] == 10
     target = settings.model_copy(update={"data_dir": tmp_path / "restored"})
     maintenance.restore_sqlite(target, backup)

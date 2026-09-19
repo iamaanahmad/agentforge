@@ -31,7 +31,7 @@ class Database:
         self.path = str(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
-            if conn.execute("PRAGMA user_version").fetchone()[0] > 11:
+            if conn.execute("PRAGMA user_version").fetchone()[0] > 12:
                 raise RuntimeError("Database schema is newer than this release; upgrade Agent4Good")
             conn.executescript("""
                 PRAGMA journal_mode=WAL;
@@ -125,7 +125,10 @@ class Database:
             from .learning import initialize as initialize_learning
 
             initialize_learning(conn)
-            conn.execute("PRAGMA user_version=11")
+            from .conversations import initialize as initialize_conversations
+
+            initialize_conversations(conn)
+            conn.execute("PRAGMA user_version=12")
             for key, value in {"name": "Agent4Good", "goal": "", "autonomy": "supervised"}.items():
                 conn.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, value))
 

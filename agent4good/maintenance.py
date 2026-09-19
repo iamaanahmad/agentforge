@@ -89,7 +89,7 @@ def sqlite_info(source):
         raise MaintenanceError("Source database does not exist")
     with sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as conn:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
-        if version > 11:
+        if version > 12:
             raise MaintenanceError("Database is newer than this release; upgrade Agent4Good first")
         if (
             conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok"
