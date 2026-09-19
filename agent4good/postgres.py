@@ -82,7 +82,7 @@ class PostgresDatabase(Database):
                 if exists is None:
                     conn.raw.execute((Path(__file__).parent / "postgres.sql").read_text())
                 version = conn.execute("SELECT version FROM schema_version WHERE id=1").fetchone()[0]
-                if version not in {1, 2, 3, 4, 5, 6, 7}:
+                if version not in {1, 2, 3, 4, 5, 6, 7, 8}:
                     raise RuntimeError("Unsupported PostgreSQL schema version")
                 from .coordination import initialize
 
@@ -102,7 +102,10 @@ class PostgresDatabase(Database):
                 from .learning import initialize as initialize_learning
 
                 initialize_learning(conn)
-                conn.execute("UPDATE schema_version SET version=7 WHERE id=1")
+                from .conversations import initialize as initialize_conversations
+
+                initialize_conversations(conn)
+                conn.execute("UPDATE schema_version SET version=8 WHERE id=1")
                 for key, value in {"name": "Agent4Good", "goal": "", "autonomy": "supervised"}.items():
                     conn.execute("INSERT OR IGNORE INTO settings VALUES (?,?)", (key, value))
                 conn.execute("INSERT OR IGNORE INTO action_policy VALUES (1,1,'{}')")

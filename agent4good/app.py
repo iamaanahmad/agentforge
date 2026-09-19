@@ -61,6 +61,16 @@ class WebhookTask(StrictInput):
     agent: str = "strategist"
 
 
+class ChatMessage(StrictInput):
+    content: str = Field(min_length=1, max_length=10000)
+    request_id: str = Field(min_length=8, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")
+    mode: Literal["ask", "work"] = "ask"
+
+
+class ChatAnswer(StrictInput):
+    content: str = Field(min_length=1, max_length=10000)
+
+
 class NoteInput(StrictInput):
     content: str = Field(max_length=20000)
 
@@ -448,6 +458,55 @@ def create_app(settings=None):
         )
         return db.public_task(db.task(task_id))
 
+    @app.get("/api/chats", dependencies=[Depends(auth)])
+    def chats():
+        return db.all("""SELECT t.id,t.title,
+            COALESCE((SELECT r.status FROM conversation_turns c JOIN tasks r ON r.id=c.task_id
+                WHERE c.root_id=t.id ORDER BY c.created_at DESC,c.task_id DESC LIMIT 1),t.status) AS status,
+            t.updated_at,
+            COALESCE((SELECT MAX(c.created_at) FROM conversation_turns c WHERE c.root_id=t.id),t.created_at) AS last_message_at
+            FROM tasks t WHERE t.owner_id='owner'
+            AND NOT EXISTS (SELECT 1 FROM conversation_turns c WHERE c.task_id=t.id)
+            ORDER BY last_message_at DESC,t.id LIMIT 500""")
+
+    @app.get("/api/tasks/{task_id}/chat", dependencies=[Depends(auth)])
+    def chat_history(task_id: str):
+        from .conversations import transcript
+
+        task_or_404(task_id)
+        return registry.credentials.redact(transcript(db, task_id))
+
+    @app.post("/api/tasks/{task_id}/chat", status_code=201, dependencies=[Depends(auth)])
+    def chat_message(task_id: str, payload: ChatMessage):
+        from .conversations import follow_up, root_task
+
+        task_or_404(task_id)
+        if registry.credentials.redact(payload.content) != payload.content:
+            raise HTTPException(400, "Credentials do not belong in chat")
+        with db.connect() as conn:
+            root = root_task(conn, task_id)
+        route = ModelRouter(settings, registry.credentials, db).readiness(task_work(root))
+        if not route["available"]:
+            raise HTTPException(409, "Configure this task's model in Connections before sending a message")
+        try:
+            tid = follow_up(db, task_id, payload.request_id, payload.content, payload.mode)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {"task_id": tid, "root_id": root["id"]}
+
+    @app.post("/api/tasks/{task_id}/questions/{question_id}/answer", dependencies=[Depends(auth)])
+    def answer_question(task_id: str, question_id: str, payload: ChatAnswer):
+        from .conversations import answer
+
+        task_or_404(task_id)
+        if registry.credentials.redact(payload.content) != payload.content:
+            raise HTTPException(400, "Credentials do not belong in chat")
+        try:
+            answer(db, task_id, question_id, payload.content)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {"status": "answered", "task_id": task_id}
+
     @app.get("/api/tasks/{task_id}", dependencies=[Depends(auth)])
     def get_task(task_id: str):
         task = db.public_task(task_or_404(task_id))
@@ -502,7 +561,7 @@ def create_app(settings=None):
         with db.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             if not conn.execute(
-                "UPDATE tasks SET status='cancelled',updated_at=? WHERE id=? AND status IN ('draft','queued','running','waiting_approval','waiting_children')",
+                "UPDATE tasks SET status='cancelled',updated_at=? WHERE id=? AND status IN ('draft','queued','running','waiting_approval','waiting_children','waiting_input')",
                 (now(), task_id),
             ).rowcount:
                 raise HTTPException(409, "This task is already closed")

@@ -44,6 +44,11 @@ def function(name, description, fields):
 
 INTERNAL_TOOLS = [
     function(
+        "ask_owner",
+        "Ask the owner one necessary question and pause. Never ask for secrets. Use only when missing information prevents progress.",
+        {"question": "One clear question, up to 4000 characters"},
+    ),
+    function(
         "quality_inspect",
         "Inspect one owner-defined quality check against the frozen candidate. Assigned independent reviewers only.",
         {"check_id": "Exact quality check ID"},
@@ -290,6 +295,7 @@ OUTPUTS = {
             "worker_results",
             "worker_wait",
             "quality_inspect",
+            "ask_owner",
         )
     },
     "browser_run": object_schema(
@@ -419,6 +425,8 @@ def build_specs():
         schema = deepcopy(definition["parameters"])
         for field in schema["properties"].values():
             field["maxLength"] = 100000
+        if name == "ask_owner":
+            schema["properties"]["question"].update(minLength=1, maxLength=4000)
         if name == "skill_read":
             from .skills import CATALOG
 
@@ -488,7 +496,7 @@ def build_specs():
                 if name in {"send_email", "github_create_issue", "github_open_pr"}
                 else "WRITE"
                 if name in MUTATING
-                or name == "artifact_write"
+                or name in {"artifact_write", "ask_owner"}
                 or name == "mission_plan"
                 or name.startswith("schedule_")
                 or name.startswith("worker_")
@@ -564,6 +572,12 @@ class ToolRegistry:
             or not self.db.one("SELECT 1 FROM quality_reviews WHERE task_id=?", (task_id,))
         ):
             permitted.discard("quality_inspect")
+        if (
+            task_id
+            and self.db
+            and self.db.one("SELECT 1 FROM conversation_turns WHERE task_id=? AND mode='ask'", (task_id,))
+        ):
+            permitted = set()
         return [
             {
                 "type": "function",
@@ -1335,8 +1349,12 @@ class ToolRegistry:
             from .missions import reserve_tool
 
             reserve_tool(conn, task_id)
-            if name.startswith(("worker_", "mission_", "schedule_", "quality_")):
-                if name == "quality_inspect":
+            if name == "ask_owner" or name.startswith(("worker_", "mission_", "schedule_", "quality_")):
+                if name == "ask_owner":
+                    from .conversations import ask_owner
+
+                    result = ask_owner(conn, task_id, call_id, args["question"])
+                elif name == "quality_inspect":
                     from .quality import inspect
 
                     result = inspect(conn, task_id, args["check_id"])

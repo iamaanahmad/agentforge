@@ -1,8 +1,8 @@
 'use strict';
 const $ = s => document.querySelector(s);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const names = {overview:'Overview',tasks:'Tasks',missions:'Missions',agents:'Your agents',approvals:'Decisions',memory:'Memory',schedules:'Schedules',integrations:'Connections',activity:'Activity',timeline:'Timeline',settings:'Settings'};
-const glyphs = ['◈','☷','◎','◉','◇','▤','◷','⌘','↗','≡','⚙'];
+const names = {overview:'Overview',tasks:'Tasks',chats:'Chats',missions:'Missions',agents:'Your agents',approvals:'Decisions',memory:'Memory',schedules:'Schedules',integrations:'Connections',activity:'Activity',timeline:'Timeline',settings:'Settings'};
+const glyphs = ['◈','☷','◌','◎','◉','◇','▤','◷','⌘','↗','≡','⚙'];
 let csrf = '', agents = [], current = 'overview', filter = 'all', toastTimer, detailId = null, rendering = false;
 const pretty = s => String(s).replaceAll('_',' ');
 const time = s => s ? new Date(s).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : 'Not yet';
@@ -17,7 +17,7 @@ async function api(path, options = {}) {
   return data;
 }
 const mutate = (path, body = {}, method = 'POST') => api(path, {method,body:JSON.stringify(body)});
-function showLogin() { csrf = ''; $('#workspace').hidden = true; $('#login').hidden = false; $('#modal').close(); }
+function showLogin() { if(typeof clearChats==='function')clearChats(); csrf = ''; $('#workspace').hidden = true; $('#login').hidden = false; $('#modal').close(); }
 function heading(kicker, title, subtitle, action = '') { return `<div class="page-heading"><div><p class="eyebrow">${kicker}</p><h1>${title}</h1><p>${subtitle}</p></div>${action}</div>`; }
 function empty(title, text, action = '') { return `<div class="empty"><span class="empty-symbol" aria-hidden="true">◇</span><h3>${title}</h3><p>${text}</p>${action}</div>`; }
 function events(rows) { rows=rows.map(r=>{try{const p=JSON.parse(r.message);if(p.audit_version===1)return {...r,message:p.message};}catch{}return r;}); return rows.length ? rows.map(r => `<div class="event-row"><span class="event-dot"></span><div class="event-content"><strong>${escapeHTML(pretty(r.kind))}</strong><p>${escapeHTML(r.message)}</p></div><time>${time(r.created_at)}</time></div>`).join('') : empty('A fresh start.','Your operator’s work will leave a clear trail here.'); }
@@ -28,7 +28,8 @@ function agentOptions(selected = 'strategist') { return agents.map(a => `<option
 async function render() {
   if (!csrf || rendering) return;
   rendering = true;
-  const route = names[location.hash.slice(1)] ? location.hash.slice(1) : 'overview';
+  const routeHash = location.hash;
+  const route = names[location.hash.slice(1).split('/')[0]] ? location.hash.slice(1).split('/')[0] : 'overview';
   current = route;
   try {
     const overview = await api('overview');
@@ -37,13 +38,14 @@ async function render() {
     $('#worker-label').textContent = overview.worker.online ? 'Operator online' : 'Operator offline';
     $('#breadcrumb').textContent = names[route];
     $('#navigation').innerHTML = Object.entries(names).map(([key,name],i) => `<a href="#${key}" class="${route === key ? 'active' : ''}" ${route === key ? 'aria-current="page"' : ''}><span aria-hidden="true">${glyphs[i]}</span>${name}${key === 'approvals' && overview.counts.approvals ? `<span class="nav-count">${overview.counts.approvals}</span>` : ''}</a>`).join('');
+    if(route==='chats'){await mountChats();return;}
     let html = '';
     if (route === 'overview') {
       const tasks = await api('tasks');
       html = heading('YOUR OPERATOR WORKSPACE','Good work starts here.','A clear view of your goals, your team, and the next move.') + `<section class="hero-workbench"><div class="hero-copy"><span class="tiny-label">FROM INTENT TO ACTION</span><h2>Big goals.<br>Thoughtful next steps.</h2><p>${escapeHTML(overview.project.goal || 'Give your operator an outcome. It researches, prepares the work, and brings important decisions back to you.')}</p><button class="primary" data-action="new-task">Create a task <span>↗</span></button></div><div class="hero-illustration" aria-hidden="true"><div class="illustration-grid"></div><div class="illustration-note note-back">A clear direction</div><div class="illustration-note note-front"><span class="mini-dot"></span>One good next move<span class="note-lines"></span><span class="note-lines short"></span><span class="note-check">✓</span></div><div class="illustration-spark">✳</div></div></section><section class="stats" aria-label="Workspace totals">${[['Total tasks',overview.counts.tasks,'All work in one place'],['In progress',overview.counts.running,'Your operator at work'],['Your decisions',overview.counts.approvals,'Actions waiting for you'],['Completed',overview.counts.completed,'Results ready to read']].map(([name,n,note]) => `<div class="stat"><span>${name}</span><strong class="stat-number">${n}</strong><span class="stat-note">${note}</span></div>`).join('')}</section><div class="two-col"><section class="panel"><div class="panel-head"><h2>Recent work</h2><a href="#tasks">View all ↗</a></div>${taskRows(tasks.slice(0,4))}</section><section class="panel"><div class="panel-head"><h2>Ready when you are</h2><a href="#integrations">Setup ↗</a></div><div class="panel-body">${[[true,'Workspace saved','Your tasks and memory stay here.'],[overview.provider.configured,'Connect your model',overview.provider.configured ? 'A model key is configured.' : 'Configure your planning model on the server.'],[overview.worker.online,'Start your operator',overview.worker.online ? 'The worker is checking for tasks.' : 'Start the worker to process tasks.']].map(([ok,title,text]) => `<div class="readiness"><span class="check-circle ${ok?'checked':''}">${ok?'✓':'·'}</span><div><strong>${title}</strong><p>${text}</p></div></div>`).join('')}<p class="small muted">Mode: ${escapeHTML(overview.project.autonomy)}. External changes always need your approval.</p></div></section></div><section class="agent-strip"><div class="panel-head"><h2>Nine perspectives. One workspace.</h2><a href="#agents">Meet your agents ↗</a></div><div class="agent-preview">${agents.slice(0,4).map((a,i) => `<a href="#agents"><span class="role-icon">${['↗','⌘','◈','◎'][i]}</span><strong>${escapeHTML(a.name)}</strong><span>${escapeHTML(a.skills[0])}</span></a>`).join('')}</div></section>`;
     } else if (route === 'tasks') {
       const rows = await api('tasks');
-      html = heading('THE WORK','From a goal to a result.','Tasks keep the instructions, decisions, and proof together.','<button class="primary" data-action="new-task">Create a task ↗</button>') + `<div class="filter-row">${['all','draft','queued','running','waiting_children','waiting_approval','done','failed','cancelled'].map(s => `<button class="filter ${s===filter?'selected':''}" data-filter="${s}">${escapeHTML(pretty(s))}</button>`).join('')}</div><section class="panel">${taskRows(rows.filter(t => filter === 'all' || t.status === filter))}</section>`;
+      html = heading('THE WORK','From a goal to a result.','Tasks keep the instructions, decisions, and proof together.','<button class="primary" data-action="new-task">Create a task ↗</button>') + `<div class="filter-row">${['all','draft','queued','running','waiting_children','waiting_approval','waiting_input','done','failed','cancelled'].map(s => `<button class="filter ${s===filter?'selected':''}" data-filter="${s}">${escapeHTML(pretty(s))}</button>`).join('')}</div><section class="panel">${taskRows(rows.filter(t => filter === 'all' || t.status === filter))}</section>`;
     } else if (route === 'agents') {
       html = heading('YOUR AI TEAM','A specialist for the next step.','Choose a perspective. Each agent uses the same tools, memory, and approval rules.') + `<div class="agent-grid">${agents.map((a,i) => `<article class="agent-card"><div class="role-icon">${glyphs[i]}</div><h2>${escapeHTML(a.name)}</h2><p>${escapeHTML(a.description)}</p><div class="tags">${a.skills.map(s => `<span class="tag">${escapeHTML(s)}</span>`).join('')}</div><button class="text-link" data-agent="${a.id}">Give this agent a task ↗</button></article>`).join('')}</div><p class="small muted">Roles guide the model. They do not create access to unconnected services or run separate models in parallel.</p>`;
     } else if (route === 'approvals') {
@@ -68,12 +70,12 @@ async function render() {
       const p = overview.project;
       html = heading('WORKSPACE SETTINGS','Set the direction.','A clear goal and clear boundaries help your operator make useful progress.') + `<form id="settings-form" class="panel form-panel"><div class="field"><label for="project-name">Workspace name</label><input id="project-name" name="name" required maxlength="80" value="${escapeHTML(p.name)}"></div><div class="field"><label for="project-goal">Your goal</label><textarea id="project-goal" name="goal" rows="4" maxlength="4000" placeholder="Who do you help, and what result do you want?">${escapeHTML(p.goal)}</textarea></div><div class="field"><label for="autonomy">Autonomy</label><select id="autonomy" name="autonomy">${[['manual','Manual · approve every tool call'],['supervised','Supervised · start tasks yourself'],['autonomous','Autonomous · schedules can start tasks']].map(([v,l]) => `<option value="${v}" ${v===p.autonomy?'selected':''}>${l}</option>`).join('')}</select><p class="field-help">Every mode requires approval for email, GitHub writes, and agent changes to shared memory. Autonomous runs can incur model and search costs.</p></div><button class="primary" type="submit">Save settings</button></form>`;
     }
-    if (route === (names[location.hash.slice(1)] ? location.hash.slice(1) : 'overview')) {
+    if (route === (names[location.hash.slice(1).split('/')[0]] ? location.hash.slice(1).split('/')[0] : 'overview')) {
       const opened=[...document.querySelectorAll('[data-timeline-open][open]')].map(el=>el.dataset.timelineOpen);
       $('#main').innerHTML = html;
       document.querySelectorAll('[data-timeline-open]').forEach(el=>{el.open=opened.includes(el.dataset.timelineOpen);});
     }
-  } catch (e) { if($('#timeline-connection'))$('#timeline-connection').textContent='Disconnected · retrying in 5s'; toast(e.message); } finally { rendering = false; }
+  } catch (e) { if($('#timeline-connection'))$('#timeline-connection').textContent='Disconnected · retrying in 5s'; toast(e.message); } finally { rendering = false; if(csrf && routeHash!==location.hash)void render(); }
 }
 function newTask(agent = 'strategist') {
   detailId = null;
@@ -81,7 +83,7 @@ function newTask(agent = 'strategist') {
 }
 async function taskDetail(id) {
   const t = await api('tasks/' + id); detailId = id;
-  modal(escapeHTML(t.title), `<div class="detail-meta">${badge(t.status)}<span>${escapeHTML(agentName(t.agent))}</span><span>${t.steps} model steps</span></div><section class="detail-section"><h3>Instructions</h3><p class="result-text">${escapeHTML(t.prompt)}</p></section>${t.error?`<div class="notice error">${escapeHTML(t.error)}</div>`:''}${t.result?`<section class="detail-section"><h3>Result</h3><div class="result-text">${escapeHTML(t.result)}</div></section>`:''}${t.artifacts.length?`<section class="detail-section"><h3>Saved files</h3>${t.artifacts.map(a => `<a class="artifact-link" href="/api/artifacts/${a.id}" download>${escapeHTML(a.name)} ↓</a>`).join('')}</section>`:''}${t.approvals.filter(a => a.status==='pending').map(approvalCard).join('')}<section class="detail-section"><h3>Activity</h3><button class="text-link" data-timeline="${escapeHTML(id)}">Open full timeline ↗</button>${events(t.events)}</section><div class="actions">${t.status==='draft'?`<button class="primary" data-run="${id}">Start task</button>`:''}${['draft','queued','running','waiting_children','waiting_approval'].includes(t.status)?`<button class="danger" data-cancel="${id}">Stop task</button>`:''}<button class="secondary" data-refresh="${id}">Refresh</button></div>`);
+  modal(escapeHTML(t.title), `<button class="secondary" data-chat="${escapeHTML(t.id)}">Open conversation ↗</button><div class="detail-meta">${badge(t.status)}<span>${escapeHTML(agentName(t.agent))}</span><span>${t.steps} model steps</span></div><section class="detail-section"><h3>Instructions</h3><p class="result-text">${escapeHTML(t.prompt)}</p></section>${t.error?`<div class="notice error">${escapeHTML(t.error)}</div>`:''}${t.result?`<section class="detail-section"><h3>Result</h3><div class="result-text">${escapeHTML(t.result)}</div></section>`:''}${t.artifacts.length?`<section class="detail-section"><h3>Saved files</h3>${t.artifacts.map(a => `<a class="artifact-link" href="/api/artifacts/${a.id}" download>${escapeHTML(a.name)} ↓</a>`).join('')}</section>`:''}${t.approvals.filter(a => a.status==='pending').map(approvalCard).join('')}<section class="detail-section"><h3>Activity</h3><button class="text-link" data-timeline="${escapeHTML(id)}">Open full timeline ↗</button>${events(t.events)}</section><div class="actions">${t.status==='draft'?`<button class="primary" data-run="${id}">Start task</button>`:''}${['draft','queued','running','waiting_children','waiting_approval','waiting_input'].includes(t.status)?`<button class="danger" data-cancel="${id}">Stop task</button>`:''}<button class="secondary" data-refresh="${id}">Refresh</button></div>`);
 }
 async function noteForm(key = '') {
   detailId = null; const rows = key ? await api('memory') : [];
@@ -138,12 +140,13 @@ document.addEventListener('click', async event => {
   } catch(e) { el.disabled=false; toast(e.message); }
 });
 document.addEventListener('submit', async event => {
+  if(event.target.id==='chat-compose'||event.target.classList.contains('chat-answer'))return;
   event.preventDefault(); const form=event.target; const data=Object.fromEntries(new FormData(form)); const button=event.submitter; if(button)button.disabled=true;
   try {
     if(form.id==='login-form') { const result=await mutate('login',data); csrf=result.csrf_token; form.reset(); $('#login-error').textContent=''; await enter(); }
     else if(form.id==='mission-form') { const fd=new FormData(form); const budget={}; for(const k of ['tasks','steps','tool_calls','model_tokens']) budget[k]=Number(data[k]); budget.model_cost_usd=data.model_cost_usd===''?null:Number(data.model_cost_usd); const m=await mutate('missions',{title:data.title,objective:data.objective,criteria:data.criteria.split('\n').filter(s=>s.trim()).map((description,i)=>({id:'criterion_'+i,description,kind:'owner'})),deadline:new Date(data.deadline).toISOString(),constraints:data.constraints,budget,priority:Number(data.priority),agents:fd.getAll('allowed_agents'),tools:fd.getAll('allowed_tools'),writes:fd.has('writes')}); location.hash='missions'; await render(); await missionDetail(m.id); }
     else if(form.classList.contains('mission-review')) { await mutate('missions/'+form.dataset.id+'/review',{criterion_id:form.dataset.criterion,evidence:data.evidence,accepted:data.accepted==='true'}); await missionDetail(form.dataset.id); }
-    else if(form.id==='task-form') { data.work_type=data.work_type || null; data.start=button?.value==='true'; const t=await mutate('tasks',data); $('#modal').close(); toast(data.start?'Task queued.':'Draft saved.'); location.hash='tasks'; await render(); await taskDetail(t.id); }
+    else if(form.id==='task-form') { data.work_type=data.work_type || null; data.start=button?.value==='true'; const t=await mutate('tasks',data); $('#modal').close(); toast(data.start?'Task queued.':'Draft saved.'); if(form.dataset.chat){location.hash='chats/'+t.id;await render();}else{location.hash='tasks'; await render(); await taskDetail(t.id);} }
     else if(form.id==='note-form') { await mutate('memory/'+encodeURIComponent(data.key),{content:data.content},'PUT'); $('#modal').close(); toast('Memory saved.'); await render(); }
     else if(form.id==='schedule-form') { if(data.interval_minutes) data.interval_minutes=Number(data.interval_minutes); data.priority=Number(data.priority); data.max_runs=Number(data.max_runs); data.depends_on=data.depends_on.split('\n').map(s=>s.trim()).filter(Boolean); if(data.at)data.at=new Date(data.at).toISOString(); data.deadline=data.deadline?new Date(data.deadline).toISOString():null; if(data.mode==='condition'){data.condition={task_id:data.condition_task,status:data.condition_status}; delete data.condition_task; delete data.condition_status;} await mutate('schedules',data); $('#modal').close(); toast('Schedule created.'); await render(); }
     else if(form.id==='settings-form') { await mutate('settings',data,'PATCH'); toast('Settings saved.'); await render(); }
@@ -155,7 +158,7 @@ window.addEventListener('hashchange', () => { $('#sidebar').classList.remove('op
 $('#modal').addEventListener('close', () => { detailId=null; });
 async function enter() { agents=await api('agents'); $('#login').hidden=true; $('#workspace').hidden=false; await render(); }
 (async () => { try { csrf=(await api('session')).csrf_token; await enter(); } catch { showLogin(); } })();
-setInterval(() => { if(csrf && !$('#modal').open && !document.activeElement.closest('form,select') && current!=='settings' && !document.hidden) render(); }, 5000);
+setInterval(() => { if(csrf && !$('#modal').open && !document.activeElement.closest('form,select') && current!=='settings' && current!=='chats' && !document.hidden) render(); }, 5000);
 
 async function missionsPage() {
   const rows = await api('missions');

@@ -120,13 +120,28 @@ class PolicyEngine:
 
         try:
             enforce(conn, task, spec.name)
+            from .conversations import enforce as enforce_chat
+
+            enforce_chat(conn, task["id"], spec.name)
         except ValueError as exc:
             raise PolicyError(str(exc)) from None
         decision = self._evaluate_one(conn, task, spec, args)
         priority = {"allow": 0, "approval": 1, "conditional_approval": 1, "escalation": 2, "deny": 3}
         from .scheduling import origins
 
-        for parent in ancestors(conn, task["id"]) + origins(conn, task["id"]):
+        from .conversations import origins as chat_origins
+
+        parents = ancestors(conn, task["id"]) + origins(conn, task["id"]) + chat_origins(conn, task["id"])
+        seen = {task["id"]}
+        for parent in parents:
+            if parent["id"] in seen:
+                continue
+            seen.add(parent["id"])
+            parents.extend(chat_origins(conn, parent["id"]))
+            try:
+                enforce_chat(conn, parent["id"], spec.name)
+            except ValueError as exc:
+                raise PolicyError(str(exc)) from None
             inherited = self._evaluate_one(conn, parent, spec, args)
             if priority[inherited.effect] > priority[decision.effect]:
                 decision.effect = inherited.effect
