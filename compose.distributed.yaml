@@ -64,7 +64,10 @@ services:
       retries: 20
     mem_limit: 512m
   objects:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    build:
+      context: .
+      dockerfile: deploy/object-storage/minio.Dockerfile
+    image: agentforge-minio:source-07c3a429
     command: [server, /data, --console-address, ':9001']
     environment:
       MINIO_ROOT_USER_FILE: /run/secrets/object_root_access
@@ -79,7 +82,10 @@ services:
       retries: 20
     mem_limit: 768m
   object-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    build:
+      context: .
+      dockerfile: deploy/object-storage/mc.Dockerfile
+    image: agentforge-mc:source-7394ce0d
     depends_on:
       objects: {condition: service_healthy}
     secrets: [object_root_access, object_root_secret, object_access, object_secret]

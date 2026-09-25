@@ -5,7 +5,7 @@ permissions:
 jobs:
   services:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17.11
@@ -25,10 +25,11 @@ jobs:
       - run: uv sync --frozen --group dev
       - name: Start real object storage
         run: |
+          docker build -f deploy/object-storage/minio.Dockerfile -t agentforge-minio:ci .
           docker run -d --name objects -p 59000:9000 \
             -e MINIO_ROOT_USER=test-only-access \
             -e MINIO_ROOT_PASSWORD=test-only-secret-never-production \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+            agentforge-minio:ci server /data
           for i in $(seq 1 40); do
             if curl -fsS http://127.0.0.1:59000/minio/health/live; then break; fi
             sleep 1
@@ -49,7 +50,7 @@ jobs:
         run: docker rm -f objects
   stack:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Generate test secret mounts
