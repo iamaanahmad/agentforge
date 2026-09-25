@@ -18,6 +18,6 @@ Known boundaries:
 - Workload limits are not spending caps. Configure provider-side financial limits.
 - No security audit, penetration test, or regulatory certification is claimed.
 
-Report suspected vulnerabilities privately to the repository owner through an agreed private channel. Do not post credentials or customer data in public GitHub issues.
+Report suspected vulnerabilities through [GitHub private vulnerability reporting](https://github.com/iamaanahmad/agentforge/security/advisories/new). Do not post credentials or customer data in public GitHub issues.
 
 See [credential boundaries, migration, rotation, and webhook authentication](docs/credential-security.md) for the threat model and operational limits.

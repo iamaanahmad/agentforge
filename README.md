@@ -126,6 +126,8 @@ docker compose --profile tls up --build -d --wait
 
 Do not publish the local development configuration. No production host or customer provider credential is bundled with this repository.
 
+See the [dependency license inventory](docs/dependency-licenses.md) before redistributing dependencies or container images.
+
 ## Verify and develop
 
 ```sh
