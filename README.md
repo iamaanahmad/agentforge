@@ -1,136 +1,196 @@
 # agentforge
 
-Previously Agent4Good. The repository is now public at [iamaanahmad/agentforge](https://github.com/iamaanahmad/agentforge).
-The Python package, CLI, and `A4G_` settings retain their names for existing installations.
+[![Verify](https://github.com/iamaanahmad/agentforge/actions/workflows/ci.yml/badge.svg)](https://github.com/iamaanahmad/agentforge/actions/workflows/ci.yml)
+[![Release evidence](https://github.com/iamaanahmad/agentforge/actions/workflows/release.yml/badge.svg)](https://github.com/iamaanahmad/agentforge/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12%20%7C%203.13-blue.svg)](pyproject.toml)
+[![Latest release](https://img.shields.io/github/v/release/iamaanahmad/agentforge)](https://github.com/iamaanahmad/agentforge/releases/latest)
 
-> License pending: public source is available, but no project license grants reuse or redistribution rights yet.
+**A self-hosted AI operator with saved work and human control.**
 
-A self-hosted AI growth and product operator. Give it an outcome, choose an agent, and review the work in one private workspace.
+Give agentforge a task, choose a specialist, and follow its work from request to saved result.
+Keep conversations, plans, approvals, and evidence in one workspace you host.
 
-**Status: working v0.1 release candidate for one owner, with SQLite or an optional PostgreSQL worker stack.** This is an original implementation, not a copy of Tin's private platform. Production deployment requires your own API credentials, HTTPS host, backups, and a live acceptance test. Nine specialist roles are included. A bounded worker pool runs delegated child tasks concurrently; PostgreSQL permits worker replicas.
+[Quick start](#run-locally) · [Deployment](#deploy-and-operate) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md) · [Releases](https://github.com/iamaanahmad/agentforge/releases)
 
-## What works
+## What you can do
 
-- A responsive dashboard with missions, tasks, results, decisions, nine agents, shared memory, schedules, connections, and activity.
-- A [linked execution timeline](docs/execution-timeline.md) with task trees, saved plans, approvals, usage labels, reconnect, and private JSON export.
-- An OpenAI Responses or Anthropic Messages tool loop with versioned plans, checkpoint recovery, bounded retries, and execution-integrity checks.
-- Stable write identities reuse completed receipts across replanning. Ambiguous writes stop for inspection.
-- Original, editable role playbooks for strategy, research, product engineering, analytics, SEO, support, outreach, paid acquisition, and finance.
-- Owner-controlled manual, supervised, and autonomous modes. Scheduled autonomous work can run without an open browser.
-- Exact approval for every external write. The owner sees the recipient, message, branch, file content, or issue before execution.
-- Persistent tool receipts. Duplicate call IDs reuse a completed result. Interrupted or ambiguous calls fail for inspection, never silently retry.
-- Saved Markdown/text/code artifacts, [layered memory with bounded retrieval](docs/layered-memory.md), a task activity trail, and consistent SQLite backup tooling.
-- Optional GitHub, Brave Search, HTTPS website reading, and Resend adapters. Missing credentials remove tools from the model's available tool list.
-- Private owner login, expiring HttpOnly sessions, CSRF and origin checks, login throttling, request size limits, host checks, and a strict content security policy.
-- Docker deployment files, a separate supervised worker, health probes, automated tests, and GitHub CI.
+- **Keep each task in its own conversation.** Send follow-ups, answer questions, and retrieve previous replies and results.
+- **Turn objectives into missions.** Define success criteria and limits, then review dependent tasks and their evidence.
+- **Work with nine specialists.** Use strategy, research, engineering, analytics, SEO, support, outreach, ads, and finance roles.
+- **Inspect execution.** Follow plans, child workers, approvals, retries, usage, and saved artifacts in the timeline.
+- **Control external actions.** Review exact write requests before execution. Scope permissions and bound task work.
+- **Resume durable work.** Saved checkpoints and receipts support recovery. Uncertain writes stop for inspection.
+- **Choose your models.** Configure OpenAI, Anthropic, AWS Bedrock, or Google Vertex AI across six task routes.
+- **Customize your installation.** Set a name, tagline, logo, and accent color without changing package names or stored data.
 
-## Capability boundaries
+agentforge supports one owner per installation. SQLite runs on one host.
+An optional PostgreSQL stack separates control services from worker replicas.
+This is an early release with automated integration checks, not a claim of verified production operation.
 
-| Area | Included now | Not implemented in v0.1 |
-|---|---|---|
-| Product work | Approved offline coding sandboxes, repository reads, branches, commits, draft PRs, checked merges, and configured workflow dispatch | Unrestricted shell, network package installation, full Dockerfile builds, production sandbox hosting |
-| Research and SEO | Brave search, allowlisted public pages, source-based reports and content drafts | Search Console, rank tracking, backlink databases, automatic CMS publishing |
-| Analytics and finance | Analysis of supplied evidence, original playbooks | PostHog, GA4, Stripe, database access, session replay |
-| Support and sales | Supplied-ticket analysis, exact approved Resend email sends | Inbound inbox sync, CRM, bulk sequences, LinkedIn |
-| Paid growth and creative | Campaign plans, copy and creative briefs | Ad activation, image/video generation, real budget management |
-| Browser work | Exact-approved isolated Chromium journeys, forms, file transfer, tabs, screenshots, encrypted task sessions | Unrestricted browsing, challenge bypass, cross-task session sharing, production browser hosting |
-| Memory | Private working snapshots, past-run episodes, sourced facts, bounded lexical retrieval, versioned corrections and quarantine | Embedding search, automatic document ingestion, multi-user memory |
-| Missions | Immutable objectives and criteria, bounded dependent plans, shared limits, revisions, pause/cancel, receipt and owner evidence checks | Automatic mission-wide semantic acceptance |
-| Execution history | Ordered task and child-agent events, plans, approvals, results, provider-reported tokens, estimated costs, private export | Hidden reasoning, actual billing, production or live-model acceptance |
-| Outcome learning | Evidence-linked completed, failed, and abandoned attempts; planning reuse; owner corrections and invalidations | Model training, automatic policy changes, measured performance gains |
-| Quality | Owner-defined executable checks, isolated critics, bounded builder revisions, separate verifiers, saved evidence | Visual critics, proof of arbitrary claims, live model quality evidence |
-| Scheduling | One-time, daily time-zone recurrence, deadline, event, and condition triggers; dependencies, priorities, atomic occurrence receipts | Cron expressions, arbitrary code or network conditions, hard completion deadlines |
-| Agent operations | Nine executable specialist roles, bounded child workers, durable messages and contexts, tasks, schedules, memory, approvals | Plugins/MCP, multi-tenant SaaS, SSO |
-
-Evidence for the included paths: [API checks](tests/test_app.py), [engine checks](tests/test_engine.py),
-[tool checks](tests/test_tools.py), and [provider contract checks](tests/test_provider.py).
-[Release acceptance checks](tests/test_release_acceptance.py) restore a real SQLite backup into a separate workspace.
-They verify saved approvals, artifact retrieval, safe checkpoint recovery, and refusal to replay ambiguous writes.
-Model responses in these tests are scripted. Live model completion and production operation remain unverified.
-[Isolated coding acceptance](docs/isolated-coding.md) adds real container and GitHub delivery evidence.
-The missing capabilities above remain planned, not available integrations.
-
-Roles describe how an agent works. They do not manufacture access to a service. Do not grant this worker an unrestricted shell or mount a Docker socket to fill those gaps.
-
-See [isolated coding workspaces](docs/isolated-coding.md) for broker setup, threat model, resource limits, and delivery rules.
+Previously Agent4Good: Python imports remain `agent4good`, the CLI remains `a4g`, and settings retain the `A4G_` prefix.
 
 ## Run locally
 
-Requirements: Python 3.12 or 3.13 and [uv](https://docs.astral.sh/uv/). Node is only used for the optional JavaScript syntax check.
+You need Git, Python 3.12 or 3.13, and [uv](https://docs.astral.sh/uv/).
+A model-provider account is required to run AI tasks. Provider charges are separate.
+Node is needed only for contributor JavaScript checks.
+
+### 1. Install and create your configuration
 
 ```sh
 git clone https://github.com/iamaanahmad/agentforge.git
 cd agentforge
 uv sync --frozen --group dev
 uv run python scripts/bootstrap.py
-# Read .env locally for your generated workspace password.
-# Add A4G_OPENAI_API_KEY in .env to enable real model runs.
+```
+
+Read the generated `.env` file locally for your workspace password.
+Keep this file private. Never put credentials in task messages, memory, screenshots, or Git.
+
+### 2. Connect a model
+
+For the default OpenAI route, set `A4G_OPENAI_API_KEY` in `.env`.
+Choose an available Responses-compatible model with `A4G_MODEL`.
+
+| Provider | Setup instructions |
+|---|---|
+| OpenAI Responses | [Model routing and environment settings](docs/model-routing.md) |
+| Anthropic Messages | [Model routing and environment settings](docs/model-routing.md) |
+| AWS Bedrock Converse | [Cloud credentials, models, and roles](docs/cloud-models-and-skills.md) |
+| Google Vertex AI Gemini | [Cloud credentials, models, and roles](docs/cloud-models-and-skills.md) |
+
+Routes pin their selected profile for each task. Failed calls do not silently switch providers.
+Use provider-side spending limits before starting recurring work.
+
+### 3. Start the web app
+
+```sh
 uv run uvicorn agent4good.app:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-In a second terminal:
+### 4. Start the worker in another terminal
+
+From the same repository directory:
 
 ```sh
 uv run python -m agent4good.worker
 ```
 
-Open `http://localhost:8000`. You can save drafts, memory, and schedules without provider keys. Starting an AI task requires the key for its selected provider. There is no mock success mode in the application. Tests use explicit fake providers and cannot send email or spend money.
+Open **http://localhost:8000** and sign in with your generated password.
+Keep both processes running. Restart both after changing server configuration.
 
-Configure optional services using `.env.example`. Restart **both** processes after changing server configuration. Secrets never belong in task instructions, memory, screenshots, or git. Rotate the session secret to invalidate all existing sessions.
+You can save drafts and memory without model credentials. AI execution requires a valid selected provider.
+There is no application mode that reports fake model success.
+See [clean-install evidence](docs/install-verification.md) for tested steps and remaining limits.
 
-[Clean-install evidence and limits](docs/install-verification.md) describe what was tested.
+## Complete your first task
 
-## First real task
+1. Add a short product description in Memory under `product`.
+2. Set your goal in Settings. Start in supervised mode.
+3. Confirm the selected route and credential access in Connections.
+4. Create a small task: “Use my product note to draft three positioning options. Save a Markdown report.”
+5. Follow progress in the task conversation and timeline.
+6. Open the result and saved artifact. Reopen the task to confirm the result remains available.
+7. Review exact requests in Decisions before allowing connected writes.
 
-1. Add your product description in Memory under `product`.
-2. Set your goal in Settings. Keep supervised mode while learning the workflow.
-3. Configure your model provider using the server environment. A configured flag does not prove the key is valid.
-4. Create a small task, such as: “Use my product note to draft three positioning options. Save a Markdown report.”
-5. Read the result and artifact. For connected actions, inspect the exact values in Decisions before approving.
-6. Set provider-side spending limits before enabling recurring autonomous runs.
+Start with a bounded task before asking for a full mission.
+A configured credential indicator does not prove account access or model quality.
 
-OpenAI calls use [the Responses API with function tools](https://developers.openai.com/api/docs/guides/function-calling). Set `A4G_MODEL` to a Responses-compatible model available to your account. Model/API changes may require adapter updates.
-
-## How autonomy works
+## How control works
 
 ```text
-Owner task or schedule → durable queue → worker claims task → model proposes tools
-                                       ↓
-                      server validates schema and permissions
-                        ↓                            ↓
-                  allowed read                  external write
-                        ↓                            ↓
-                 execute and record          exact owner approval
-                        └───────────────┬────────────┘
-                                  next model step
-                                        ↓
-                              result + saved artifacts
+Task or schedule → durable queue → worker → model proposes an action
+                                              ↓
+                                  schema and permission checks
+                                     ↓                  ↓
+                                allowed read      exact write approval
+                                     └────────┬─────────┘
+                                       saved receipt
+                                              ↓
+                                   result and saved artifacts
 ```
 
 | Mode | Starting work | Tool decisions |
 |---|---|---|
-| Manual | Owner starts; schedules create drafts | Owner approves every tool call |
-| Supervised (default) | Owner starts; schedules create drafts | Reads and artifacts run; external writes and memory changes need approval |
-| Autonomous | Owner starts or schedules enqueue | Same write approvals; unattended model/search calls can incur costs |
+| Manual | You start tasks; schedules create drafts | You approve every tool call |
+| Supervised | You start tasks; schedules create drafts | Reads and artifacts run; external writes and memory changes need approval |
+| Autonomous | You start tasks or schedules enqueue them | External write approvals remain mandatory |
 
-Approval is bound to the task, call ID, tool name, and exact arguments. A rejection stops that task. Changing autonomy never removes approval for external writes. Stop prevents future steps; an external request already in flight can still finish.
+Approvals bind the task, tool, call, and exact arguments. Rejection stops the task.
+Cancellation prevents future steps; an external request already in progress can still finish.
+Step and daily run limits bound work. They are not provider billing limits.
 
-The daily run limit includes resumed approval segments and resets at UTC midnight. The step limit applies across the whole task, including pauses. These are workload limits, **not a dollar cap**. Configure billing limits with each provider.
+## Deploy and operate
 
-## Deploy
-
-See [deployment and operations](docs/deployment.md). The Docker Compose stack includes a non-root web process, a non-root worker, persistent storage, health checks, and optional Caddy TLS.
+Read [deployment and recovery](docs/deployment.md) before exposing the app to the internet.
+The Compose stack runs separate non-root web and worker services, with persistent storage and optional Caddy HTTPS.
 
 ```sh
-# Configure .env for your real domain and secrets first.
+# First configure your domain, secrets, and production settings in .env.
 docker compose --profile tls up --build -d --wait
 ```
 
-Do not publish the local development configuration. No production host or customer provider credential is bundled with this repository.
+Before using a deployment for real work:
 
-See the [dependency license inventory](docs/dependency-licenses.md) before redistributing dependencies or container images.
+- Set the public HTTPS origin, allowed hosts, secure cookies, and strong owner/session secrets.
+- Configure model credentials and role access. Keep vault keys outside the data volume.
+- Check web health and the worker heartbeat.
+- Run a small live task, review its output, and retrieve its saved result.
+- Create a backup and prove restoration into a separate destination.
+- Set provider budgets and review permissions for each connected adapter.
 
-## Verify and develop
+Use [PostgreSQL deployment](docs/distributed-infrastructure.md) when you need separate worker replicas.
+Use [credential security](docs/credential-security.md) for vault migration, rotation, and access boundaries.
+Automated tests do not replace these checks on your own host.
+
+## Integrations and boundaries
+
+| Area | Available | Boundary |
+|---|---|---|
+| Model execution | OpenAI, Anthropic, Bedrock, Vertex AI | Your accounts, permissions, and model access are required |
+| Research | Brave Search, allowlisted HTTPS reading, approved DataForSEO keyword queries | No Search Console or automatic CMS publishing |
+| GitHub | Scoped reads, branches, files, issues, draft PRs, checked merges, configured workflows | Exact approvals and repository restrictions apply |
+| Email | Exact approved Resend sends | No inbound inbox sync, CRM, or bulk sequences |
+| Coding | Optional isolated offline sandbox broker | No unrestricted host shell or network package installation |
+| Browser | Optional isolated Chromium broker with approved journeys | No challenge bypass or cross-task session sharing |
+| Analytics and finance | Analysis of supplied evidence | No built-in PostHog, GA4, Stripe, or customer-database connector |
+| Paid growth | Plans, copy, and creative briefs | No ad activation, spending control, or media generation |
+
+Roles guide work; they do not create service access. Missing credentials remove unavailable tools from the model's tool list.
+Optional browser and coding brokers require their own setup. Never grant an unrestricted shell or Docker socket as a shortcut.
+
+## Documentation
+
+| Guide | What it covers |
+|---|---|
+| [Architecture](docs/architecture.md) | Processes, storage, extension points |
+| [Task conversations](docs/task-conversations.md) | Separate chats, replies, questions, and follow-ups |
+| [Missions](docs/missions.md) | Objectives, dependent plans, criteria, and evidence |
+| [Specialist workers](docs/specialist-workers.md) | Parallel delegation, messages, and cancellation |
+| [Scheduling](docs/scheduling.md) | Time, event, condition, dependency, and priority rules |
+| [Execution timeline](docs/execution-timeline.md) | Plans, events, approvals, usage, and export |
+| [Durable execution](docs/durable-execution.md) | Checkpoints, retries, receipts, and recovery limits |
+| [Tool registry](docs/tool-registry.md) | Typed contracts and validated execution |
+| [Action policies](docs/action-policies.md) | Scoped permissions and work limits |
+| [Layered memory](docs/layered-memory.md) | Retrieval, corrections, isolation, and quarantine |
+| [Independent quality](docs/independent-quality.md) | Critics, verifiers, and bounded revisions |
+| [Outcome learning](docs/outcome-learning.md) | Evidence-linked history and later planning |
+| [Developer tools](docs/developer-tools.md) | Authenticated API, CLI, SDK, and recorded-only replay |
+| [Browser control](docs/browser-control.md) | Broker setup, supported actions, and safety limits |
+| [Isolated coding](docs/isolated-coding.md) | Sandbox resources, delivery, and threat model |
+| [Instance branding](docs/white-label.md) | Name, tagline, logo, and color settings |
+| [Separate installations](docs/projects.md) | Independent storage and configuration for different products |
+
+“Projects” in the installation guide means separate deployments for different products.
+There is no project switcher or separate workspace feature inside one installation.
+
+## Contribute
+
+Bug reports, documentation improvements, and focused code changes are welcome.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, review expectations, and compatibility rules.
+Use [issues](https://github.com/iamaanahmad/agentforge/issues) for reproducible bugs and feature proposals.
+Follow [SECURITY.md](SECURITY.md) for vulnerabilities; do not post secrets or private data in public issues.
 
 ```sh
 uv sync --frozen --group dev
@@ -138,91 +198,15 @@ uv run ruff check .
 uv run ruff format --check .
 uv run pytest -q
 node --check agent4good/static/app.js
+node --check agent4good/static/chats.js
 uv build
 ```
 
-Tests cover API authentication, CSRF, limits, persistence, approvals, task cancellation, scheduler behavior, worker recovery, tool receipts, SSRF controls, and repository restrictions. CI also builds and starts the Docker services. Live provider acceptance needs your own credentials and explicit test scope.
+CI checks Python 3.12 and 3.13, package installation, containers, and release evidence.
+The release gate requires regression, infrastructure, browser, sandbox, and failure suites.
+Local service skips are not passing integration evidence. Most model tests use controlled responses.
 
-- [Architecture and extension guide](docs/architecture.md)
-- [Deployment and recovery](docs/deployment.md)
-- [Security model](SECURITY.md)
+## License
 
-## Projects and customization
-
-- [Separate project installations](docs/projects.md) explains the single-owner boundary and storage separation.
-- [Instance branding](docs/white-label.md) covers names, logos, taglines, and accessible colors.
-- [Contributing](CONTRIBUTING.md) covers development, review, safe bug reports, and compatibility.
-
-## Ownership
-
-The code is committed to your repository. No third-party open-source license is selected on your behalf. Choose a license before offering redistribution rights. Provider SDKs and dependencies retain their own licenses.
-
-## Typed tool execution
-
-All 12 implemented tools now share validated execution, exact approvals, durable receipts, and shared rate limits.
-The authenticated `/api/tools` catalog separates executable tools from planned categories.
-See [tool contracts and bounded live evidence](docs/tool-registry.md).
-
-## Scoped action policies
-
-Owner-configured rules now restrict tool execution by user, role, task, tool, environment, and action class.
-Existing exact write approvals remain mandatory. Shared limits reserve attempts, recipients, and configured cost ceilings.
-See [policy configuration and limits](docs/action-policies.md). Actual provider billing and multi-user operation remain outside this scope.
-
-## Credential and environment protection
-
-An encrypted vault now brokers credentials by owner, agent role, adapter purpose, tenant, and environment.
-Keys remain outside the data volume. Signed webhooks can create drafts, with replay and rate checks.
-Existing owner deployments remain supported; multi-user and arbitrary command execution remain unavailable.
-See [migration, key rotation, and the threat model](docs/credential-security.md).
-
-See [durable execution](docs/durable-execution.md) for crash boundaries, budgets, and evidence limits.
-
-## Model routing
-
-Assign independent models to planning, coding, browsing, research, summarization, and verification.
-OpenAI Responses and Anthropic Messages share a normalized tool contract.
-Each task pins its profile across recovery; failures never switch providers automatically.
-Connections shows all six routes, missing keys, and recorded call evidence.
-See [configuration, budgets, capability limits, and acceptance evidence](docs/model-routing.md).
-
-## Distributed deployment
-
-Use [the PostgreSQL deployment guide](docs/distributed-infrastructure.md) for independent control and worker containers, a database queue, private objects, lease recovery, and versioned migration. The original SQLite commands remain single-host only. Real service tests use scripted model answers; public production operation remains unverified.
-
-Browser setup, supported actions, network limits, and recovery: [Browser control](docs/browser-control.md).
-
-## Executable specialists
-
-[Specialist workers](docs/specialist-workers.md) adds bounded parallel delegation, private and shared context, durable messaging, priority, result collection, inherited permissions and cancellation. Real daemon restart acceptance uses scripted model responses; live provider completion remains unverified.
-
-[First-class missions](docs/missions.md) turn an objective into dependent worker tasks. Mission success requires evidence against original criteria.
-
-Scheduling behavior, APIs, migration, and dispatch guarantees: [dependency-aware scheduling](docs/scheduling.md).
-
-## Independent quality checks
-
-Critical tasks can require separate critic and verifier workers against owner-defined evidence checks.
-Failed checks trigger bounded revisions; missing evidence cannot pass. Configure task contracts or server defaults through [the quality guide](docs/independent-quality.md).
-Existing tasks keep their prior behavior. Scripted acceptance proves runtime boundaries, not live model correctness.
-
-## Evidence-linked outcome learning
-
-Completed, failed, and cancelled attempts retain actions, timing, costs, and verification evidence.
-Later plans can retrieve relevant outcomes and record their reported effect on the next actions.
-Owner corrections and invalidations remove stale lessons from recall. Estimates and interpretations stay explicitly unverified.
-See [outcome learning](docs/outcome-learning.md) for APIs, trust limits, migration, and tests.
-
-## Developer interfaces
-
-Use the installed `a4g` CLI, authenticated `/api/v1` API, and Python SDK for missions and recovery.
-Replay reads saved evidence without running tools. Restore refuses existing destinations.
-See [developer tools](docs/developer-tools.md) for installation, examples, safety limits, and repeatable acceptance.
-
-## Cloud models and reusable skills
-
-[AWS Bedrock, Google Vertex AI, and DataForSEO setup](docs/cloud-models-and-skills.md) adds cloud text/tool adapters and ten versioned packaged workflows.
-The nine specialists reuse existing worker delegation and safety controls. DataForSEO keyword queries require an owner cost estimate and exact approval.
-Cloud account access, credit coverage, and live mission completion still require acceptance with your credentials.
-
-See [Task conversations](docs/task-conversations.md) for separate chats, follow-up work, and agent questions.
+Project-owned code is released under the [MIT license](LICENSE).
+Dependencies retain their own terms. Read the [dependency inventory](docs/dependency-licenses.md) before redistributing dependencies or containers.

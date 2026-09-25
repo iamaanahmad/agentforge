@@ -1,6 +1,6 @@
 # Dependency license review
 
-Checked September 25, 2026 against the frozen Python environment, including development tools. This inventory reports package metadata, not legal clearance. Recheck the actual artifacts when shipping wheels or containers. No project LICENSE has been adopted.
+Checked September 25, 2026 against the frozen Python environment, including development tools. This inventory reports package metadata, not legal clearance. Recheck the actual artifacts when shipping wheels or containers. Project-owned code now uses the [MIT license](../LICENSE), approved by the owner.
 
 ## Python inventory
 
@@ -70,6 +70,6 @@ PostgreSQL, Caddy, Python, Go, Debian system packages, Chromium and the browser 
 
 No Python metadata entry is unknown in this checked environment. Permissive licenses dominate, but LGPL, MPL and AGPL obligations remain. No finding here requires hiding the project's own source. Publishing source does not itself grant a license, and a project license cannot replace third-party terms.
 
-The blocking project decision is adoption of a project license. A binary/container release also requires the artifact-level notice and source review above. Do not claim all components have one permissive license.
+The 0.2.0 wheel and source archive contain project files, not third-party dependency wheels or container images. Bundled third-party binary or container releases still require the artifact-level notice and source review above. Do not claim all components have one permissive license.
 
 Sources: installed `.dist-info/METADATA` and license directories, `uv.lock`, deployment Dockerfiles, [Psycopg source license](https://github.com/psycopg/psycopg/blob/master/LICENSE.txt), [Certifi license](https://github.com/certifi/python-certifi/blob/master/LICENSE), and [MinIO source](https://github.com/minio/minio).

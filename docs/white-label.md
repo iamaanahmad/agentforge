@@ -29,7 +29,7 @@ Only use a logo you intend to serve publicly. Never point this setting at a priv
 The settings cover the login and workspace names, browser title, footer tagline, chat assistant label, accent, and logo.
 They do not rewrite editorial comparison pages, legal notices, support contacts, or source attribution.
 Review those separately for your deployment. Changing a logo does not grant trademark or redistribution rights.
-The project license remains undecided.
+Project-owned code uses the [MIT license](../LICENSE). Preserve its copyright and permission notice.
 
 Existing Python imports, CLI commands, `A4G_` environment variables, cookies, and data paths remain unchanged.
 To restore defaults, remove the branding settings and restart the web process.
