@@ -1,7 +1,7 @@
 from pathlib import Path
 import os
 from typing import Literal
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from .model_config import ModelProfile, WorkType
 from .quality import QualityInput
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -11,6 +11,28 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="A4G_", env_file=".env", extra="ignore", hide_input_in_errors=True
     )
+    brand_name: str = Field("agentforge", min_length=1, max_length=40)
+    brand_tagline: str = Field("A place for work to move forward.", min_length=1, max_length=160)
+    brand_accent: str = Field("#185b46", pattern=r"^#[0-9a-fA-F]{6}$")
+    brand_logo_file: Path | None = None
+
+    @field_validator("brand_name", "brand_tagline")
+    @classmethod
+    def visible_brand_text(cls, value):
+        if not value.strip() or any(ord(c) < 32 for c in value):
+            raise ValueError("Brand text must contain visible text without control characters")
+        return value.strip()
+
+    @field_validator("brand_accent")
+    @classmethod
+    def accessible_accent(cls, value):
+        rgb = [int(value[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+        linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+        luminance = sum(c * w for c, w in zip(linear, (0.2126, 0.7152, 0.0722)))
+        if 1.05 / (luminance + 0.05) < 4.5:
+            raise ValueError("Brand accent must provide at least 4.5:1 contrast against white")
+        return value
+
     environment: str = Field("local", min_length=1, max_length=160)
     tenant_id: str = Field("default", pattern=r"^[a-zA-Z0-9_-]{1,64}$")
     isolation_mode: Literal["single_owner"] = "single_owner"

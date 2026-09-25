@@ -1,4 +1,9 @@
-# Agent4Good
+# agentforge
+
+Previously Agent4Good. The repository is now public at [iamaanahmad/agentforge](https://github.com/iamaanahmad/agentforge).
+The Python package, CLI, and `A4G_` settings retain their names for existing installations.
+
+> License pending: public source is available, but no project license grants reuse or redistribution rights yet.
 
 A self-hosted AI growth and product operator. Give it an outcome, choose an agent, and review the work in one private workspace.
 
@@ -54,6 +59,8 @@ See [isolated coding workspaces](docs/isolated-coding.md) for broker setup, thre
 Requirements: Python 3.12 or 3.13 and [uv](https://docs.astral.sh/uv/). Node is only used for the optional JavaScript syntax check.
 
 ```sh
+git clone https://github.com/iamaanahmad/agentforge.git
+cd agentforge
 uv sync --frozen --group dev
 uv run python scripts/bootstrap.py
 # Read .env locally for your generated workspace password.
@@ -135,6 +142,12 @@ Tests cover API authentication, CSRF, limits, persistence, approvals, task cance
 - [Architecture and extension guide](docs/architecture.md)
 - [Deployment and recovery](docs/deployment.md)
 - [Security model](SECURITY.md)
+
+## Projects and customization
+
+- [Separate project installations](docs/projects.md) explains the single-owner boundary and storage separation.
+- [Instance branding](docs/white-label.md) covers names, logos, taglines, and accessible colors.
+- [Contributing](CONTRIBUTING.md) covers development, review, safe bug reports, and compatibility.
 
 ## Ownership
 
