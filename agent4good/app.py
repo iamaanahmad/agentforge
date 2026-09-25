@@ -13,7 +13,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from .credentials import CredentialError
 from .webhooks import authenticate_webhook
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from .branding import render_brand, load_logo
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ConfigDict
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -102,10 +103,11 @@ def create_app(settings=None):
     settings = settings or Settings()
     db = Database.from_settings(settings)
     registry = ToolRegistry(settings, db)
-    app = FastAPI(title="Agent4Good", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title=settings.brand_name, version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.db, app.state.settings = db, settings
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
     static = Path(__file__).parent / "static"
+    brand_logo = load_logo(settings.brand_logo_file)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, exc):
@@ -863,6 +865,19 @@ def create_app(settings=None):
 
     app.mount("/static", StaticFiles(directory=static), name="static")
 
+    @app.get("/brand/style.css")
+    def brand_styles():
+        return Response(
+            f":root{{--accent:{settings.brand_accent};--accent-hover:{settings.brand_accent}}}",
+            media_type="text/css",
+        )
+
+    @app.get("/brand/logo")
+    def brand_image():
+        if brand_logo is None:
+            return FileResponse(static / "mark.svg")
+        return Response(brand_logo[0], media_type=brand_logo[1])
+
     @app.get("/compare/autogpt")
     def autogpt_comparison():
         return FileResponse(static / "compare" / "autogpt.html")
@@ -883,6 +898,6 @@ def create_app(settings=None):
 
     @app.get("/")
     def index():
-        return FileResponse(static / "index.html")
+        return HTMLResponse(render_brand((static / "index.html").read_text(), settings))
 
     return app
