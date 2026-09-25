@@ -78,6 +78,8 @@ Open `http://localhost:8000`. You can save drafts, memory, and schedules without
 
 Configure optional services using `.env.example`. Restart **both** processes after changing server configuration. Secrets never belong in task instructions, memory, screenshots, or git. Rotate the session secret to invalidate all existing sessions.
 
+[Clean-install evidence and limits](docs/install-verification.md) describe what was tested.
+
 ## First real task
 
 1. Add your product description in Memory under `product`.
