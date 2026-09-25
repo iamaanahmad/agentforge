@@ -38,7 +38,7 @@ jobs:
       - name: Prove installed developer and recovery tools
         run: |
           uv venv /tmp/a4g-installed --python ${{ matrix.python }}
-          uv pip install --python /tmp/a4g-installed/bin/python dist/agent4good-0.1.0-py3-none-any.whl
+          uv pip install --python /tmp/a4g-installed/bin/python dist/agent4good-*-py3-none-any.whl
           python3 scripts/developer_acceptance.py --python /tmp/a4g-installed/bin/python
   container:
     runs-on: ubuntu-latest

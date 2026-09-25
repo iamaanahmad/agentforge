@@ -2,9 +2,8 @@
 
 agentforge was previously called Agent4Good. The Python package and `A4G_` settings keep their existing names for compatibility.
 
-The repository is public. A project license has not yet been selected.
-Public visibility alone does not grant general reuse or redistribution rights.
-Ask the maintainer about contribution terms before submitting code while this remains unresolved.
+The project uses the [MIT license](LICENSE). Submit only work you have the right to contribute.
+Keep existing copyright and third-party notices.
 
 ## Start with a reproducible issue
 
