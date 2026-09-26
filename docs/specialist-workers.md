@@ -4,14 +4,15 @@ A parent task can delegate bounded work to any of the nine roles. Children run t
 
 ## Coordination contract
 
-The model receives five new tools. Inputs use the registry's strict string-field schema.
+The model receives six coordination tools. Inputs use the registry's strict string-field schema.
 
 | Tool | Contract |
 |---|---|
 | `worker_spawn` | `request` is a JSON object containing `title`, `prompt`, `agent`, `tools`, `priority`, and `reason`. Role IDs come from `/api/agents`. `tools` is an explicit subset of the parent's list. |
 | `worker_message` | `recipient` is a direct parent or child task ID. `content` is at most 4,000 characters. Messages persist; siblings must communicate through their parent. |
 | `worker_context` | `scope` is `private` or `shared`. `operation` is `read` or `write`. Reads use empty `revision` and `content`. Writes supply the expected revision as a string and up to 10,000 content characters. Stale writes fail without replacing newer context. |
-| `worker_results` | No arguments. Returns caller identity, direct child statuses and results, and the last ten inbound messages. Results are capped at 750 characters per child; messages at 1,000. Full results remain in the owner API. |
+| `worker_results` | No arguments. Returns caller identity, direct child statuses and results, and the last ten inbound messages. Results are capped at 750 characters per child; messages at 1,000. Each preview reports `result_length`, `result_truncated`, `result_sha256`, and `next_offset` after credential redaction. Use `worker_result_read` to retrieve the rest. Full results remain in the owner API. |
+| `worker_result_read` | `child_id` names a terminal direct child owned by the caller. `offset` and `limit` are decimal strings; limit is 1–4,000 Unicode characters. Returns `result`, `result_length`, `has_more`, `next_offset`, and `result_sha256`. Start at zero or the preview's `next_offset`; follow pages until `has_more` is false. No transcript or error payload is returned. |
 | `worker_wait` | No arguments. Checkpoints and yields the execution slot until direct children finish, fail, or cancel. Then the parent resumes its saved transcript and can collect results. |
 
 Delegation needs a concrete independent deliverable and a reason. The system prompt requires minimum permissions and tells parents to wait, inspect evidence, and disclose child failures. This instruction guides planning; the server enforces limits. It does not judge whether a delegation reason is wise.
@@ -58,3 +59,11 @@ SQLite schema 6 and PostgreSQL schema 2 add separate coordination tables without
 `tests/test_workers.py` exercises two real concurrent runner threads, separate contexts, transactional conflicts, parent permission denial, priorities, limits, retries, cancellation, and tree budgets. Its daemon acceptance starts the real worker process, waits for two children to run together, kills the process, restarts it, and checks collected results and restored private context. The fixture deletes its temporary data after completion.
 
 `tests/test_infrastructure.py::test_distributed_child_workers_and_backup` exercises two real PostgreSQL runners and restores a populated tree into a separate schema. CI supplies PostgreSQL and object storage. Model responses in these checks are scripted. No live provider completion or public production operation is established by these tests.
+
+## Reading complete child answers
+
+`worker_results` retains its no-argument interface and 750-character previews. The new read tool is read-only and passes through existing permission, policy, receipt, rate, and execution budgets. New root tasks receive it; existing stored tool lists and child grants are not enlarged. A child that delegates must explicitly receive `worker_result_read` to collect full answers.
+
+Only direct children qualify. Siblings, ancestors, grandchildren, unrelated tasks, and other owners are denied. Active child results are unavailable until terminal. Negative, malformed, out-of-range offsets and oversized pages fail. An offset equal to the answer length returns an empty final page. Empty terminal answers also return an empty final page.
+
+Known credentials are redacted before slicing, including secrets crossing page boundaries. Offsets and the SHA-256 identify that redacted text, not raw stored text. If the hash changes across pages, restart at zero within the remaining budget or disclose an incomplete result. Reusing a call ID returns its original receipt; use a new call ID for a fresh observation. Each response remains below the existing 50,000-character serialized coordination limit, including Unicode escaping. Retrieval does not expose provider transcripts, private context, or arbitrary task records.

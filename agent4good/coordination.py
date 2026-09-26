@@ -1,6 +1,8 @@
 """Durable, bounded task trees. All mutations run in the caller's transaction."""
 
+import hashlib
 import json
+import re
 from .db import now, uid
 from .catalog import AGENTS
 
@@ -12,7 +14,14 @@ SCHEMA = [
     "CREATE TABLE IF NOT EXISTS worker_resources (resource TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id))",
 ]
 TERMINAL = {"done", "failed", "cancelled"}
-NAMES = {"worker_spawn", "worker_message", "worker_context", "worker_results", "worker_wait"}
+NAMES = {
+    "worker_spawn",
+    "worker_message",
+    "worker_context",
+    "worker_results",
+    "worker_result_read",
+    "worker_wait",
+}
 
 
 def initialize(conn):
@@ -62,7 +71,7 @@ def enforce(conn, task, name):
             raise ValueError("Parent is closed")
 
 
-def dispatch(conn, db, settings, task_id, name, args):
+def dispatch(conn, db, settings, task_id, name, args, *, redact):
     own = node(conn, task_id)
     if name == "worker_spawn":
         request = json.loads(args["request"])
@@ -147,20 +156,68 @@ def dispatch(conn, db, settings, task_id, name, args):
         else:
             raise ValueError("Context operation must be read or write")
         return {"data": {"revision": revision, "content": content}}
+    if name == "worker_result_read":
+        # Check ownership and the direct relationship before reading any saved text.
+        child = conn.execute(
+            "SELECT t.id,t.agent,t.status,t.result FROM tasks t "
+            "JOIN worker_nodes n ON t.id=n.task_id "
+            "JOIN tasks p ON p.id=n.parent_id "
+            "WHERE t.id=? AND n.parent_id=? AND t.owner_id=p.owner_id AND p.owner_id='owner'",
+            (args["child_id"], task_id),
+        ).fetchone()
+        if not child:
+            raise ValueError("Result requires an owned direct child")
+        if child["status"] not in TERMINAL:
+            raise ValueError("Child result is not final; wait for completion")
+        for field in ("offset", "limit"):
+            if not re.fullmatch(r"[0-9]{1,10}", args[field]):
+                raise ValueError("Result offset and limit must be decimal strings")
+        offset, limit = int(args["offset"]), int(args["limit"])
+        if not 1 <= limit <= 4000:
+            raise ValueError("Result page limit must be between 1 and 4000 characters")
+        # Redact the complete value before slicing so a page cannot split a secret.
+        result = redact(child["result"])
+        if offset > len(result):
+            raise ValueError("Result offset exceeds result length")
+        end = min(offset + limit, len(result))
+        return {
+            "data": {
+                "child_id": child["id"],
+                "status": child["status"],
+                "result": result[offset:end],
+                "offset": offset,
+                "result_length": len(result),
+                "has_more": end < len(result),
+                "next_offset": end if end < len(result) else None,
+                "result_sha256": hashlib.sha256(result.encode()).hexdigest(),
+            }
+        }
     if name == "worker_results":
         children = conn.execute(
-            "SELECT t.id,t.agent,t.status,t.result,t.error FROM tasks t JOIN worker_nodes n ON t.id=n.task_id WHERE n.parent_id=? ORDER BY n.priority DESC,t.created_at,t.id",
+            "SELECT t.id,t.agent,t.status,t.result,t.error FROM tasks t JOIN worker_nodes n ON t.id=n.task_id WHERE n.parent_id=? AND t.owner_id='owner' ORDER BY n.priority DESC,t.created_at,t.id",
             (task_id,),
         ).fetchall()
         messages = conn.execute(
             "SELECT * FROM worker_messages WHERE recipient=? ORDER BY created_at,id", (task_id,)
         ).fetchall()
+        previews = []
+        for child in children:
+            result = redact(child["result"])
+            previews.append(
+                {
+                    **dict(child),
+                    "result": result[:750],
+                    "error": redact(child["error"])[:250],
+                    "result_length": len(result),
+                    "result_truncated": len(result) > 750,
+                    "result_sha256": hashlib.sha256(result.encode()).hexdigest(),
+                    "next_offset": 750 if len(result) > 750 else None,
+                }
+            )
         return {
             "data": {
                 "self": {"task_id": task_id, "parent_id": own["parent_id"], "root_id": own["root_id"]},
-                "children": [
-                    {**dict(c), "result": c["result"][:750], "error": c["error"][:250]} for c in children
-                ],
+                "children": previews,
                 "messages": [{**dict(m), "content": m["content"][:1000]} for m in messages][-10:],
             }
         }
