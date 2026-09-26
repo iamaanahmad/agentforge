@@ -26,6 +26,7 @@ def test_catalog_covers_categories_without_exposing_placeholders(settings):
         "worker_message",
         "worker_context",
         "worker_results",
+        "worker_result_read",
         "worker_wait",
         "schedule_create",
         "schedule_cancel",

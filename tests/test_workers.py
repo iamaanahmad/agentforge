@@ -312,3 +312,132 @@ def test_cancel_api_rejects_child_approval(owner, app):
     response = owner.post("/api/tasks/" + parent + "/cancel", json={})
     assert response.status_code == 200
     assert db.task(child)["status"] == "cancelled"
+
+
+def read_result(r, parent, child, offset=0, limit=4000, call="page"):
+    return r.execute(
+        "worker_result_read",
+        {"child_id": child, "offset": str(offset), "limit": str(limit)},
+        task_id=parent,
+        call_id=call,
+    )["data"]
+
+
+def test_complete_result_pages_preserve_unicode_tail_and_repeat_receipts(settings):
+    r, parent = runnable(settings)
+    child = spawn(r, parent)
+    answer = "😀" * 8100 + "\nSECOND SAFE CLAIM\nCLAIM TO AVOID"
+    r.db.execute("UPDATE tasks SET status='done',result=? WHERE id=?", (answer, child))
+    preview = r.execute("worker_results", {}, task_id=parent, call_id="preview")["data"]["children"][0]
+    assert preview["result"] == answer[:750]
+    assert preview["result_truncated"] and preview["result_length"] == len(answer)
+    collected, offset, hashes = preview["result"], preview["next_offset"], {preview["result_sha256"]}
+    while offset is not None:
+        page = read_result(r, parent, child, offset, call=f"page-{offset}")
+        assert page == read_result(r, parent, child, offset, call=f"page-{offset}")
+        assert page == read_result(r, parent, child, offset, call=f"fresh-{offset}")
+        assert len(page["result"]) <= 4000
+        assert len(json.dumps({"data": page})) < 50000
+        hashes.add(page["result_sha256"])
+        collected += page["result"]
+        assert page["has_more"] == (page["next_offset"] is not None)
+        offset = page["next_offset"]
+    assert len(hashes) == 1 and collected == answer
+    end = read_result(r, parent, child, len(answer), call="end")
+    assert end["result"] == "" and not end["has_more"]
+    assert end["next_offset"] is None
+
+
+@pytest.mark.parametrize("status", ["done", "failed", "cancelled"])
+def test_empty_terminal_result(settings, status):
+    r, parent = runnable(settings)
+    child = spawn(r, parent)
+    r.db.execute("UPDATE tasks SET status=?,error='private error' WHERE id=?", (status, child))
+    page = read_result(r, parent, child)
+    assert page["status"] == status
+    assert page["result"] == "" and page["result_length"] == 0
+    assert not page["has_more"] and page["next_offset"] is None
+    assert "private error" not in json.dumps(page)
+
+
+@pytest.mark.parametrize(
+    "offset,limit", [(-1, 1), (0, 0), (0, 4001), (4, 1), ("1.5", 1), ("", 1), (True, 1), ("9" * 11, 1)]
+)
+def test_result_page_rejects_bad_ranges(settings, offset, limit):
+    r, parent = runnable(settings)
+    child = spawn(r, parent)
+    r.db.execute("UPDATE tasks SET status='done',result='abc' WHERE id=?", (child,))
+    with pytest.raises(ValueError):
+        read_result(r, parent, child, offset, limit)
+    assert not r.db.one("SELECT 1 FROM tool_runs WHERE call_id='page'")
+
+
+def test_result_access_enforces_direct_relationship_owner_and_grants(settings):
+    r, parent = runnable(settings)
+    child = spawn(r, parent, "child")
+    sibling = spawn(r, parent, "sibling")
+    active(r, child)
+    active(r, sibling)
+    grandchild = spawn(r, child, "grandchild")
+    stranger = r.db.create_task("other", "other", "strategist", True)
+    active(r, stranger)
+    for caller, target in [
+        (sibling, child),
+        (child, parent),
+        (parent, grandchild),
+        (stranger, child),
+        (parent, "missing"),
+    ]:
+        with pytest.raises(ValueError, match="owned direct child"):
+            read_result(r, caller, target)
+    with pytest.raises(ValueError, match="not final"):
+        read_result(r, parent, child)
+    r.db.execute("UPDATE tasks SET status='done',result='private',owner_id='other' WHERE id=?", (child,))
+    with pytest.raises(ValueError, match="owned direct child"):
+        read_result(r, parent, child)
+    assert child not in {
+        c["id"] for c in r.execute("worker_results", {}, task_id=parent, call_id="list")["data"]["children"]
+    }
+    r.db.execute("UPDATE tasks SET owner_id='owner' WHERE id=?", (child,))
+    r.db.execute("UPDATE worker_nodes SET tools=? WHERE task_id=?", (json.dumps(["worker_results"]), parent))
+    with pytest.raises(ValueError, match="inherited worker permissions"):
+        read_result(r, parent, child)
+    assert "worker_result_read" not in {t["name"] for t in r.definitions(parent)}
+
+
+def test_result_redacts_before_preview_and_page_boundaries(settings):
+    r, parent = runnable(settings)
+    child = spawn(r, parent)
+    secret = settings.admin_password
+    raw = "a" * 740 + secret + "b" * 3245 + secret + "TAIL" * 30
+    r.db.execute("UPDATE tasks SET status='done',result=? WHERE id=?", (raw, child))
+    expected = raw.replace(secret, "[redacted]")
+    preview = r.execute("worker_results", {}, task_id=parent, call_id="preview")["data"]["children"][0]
+    assert preview["result"] == expected[:750]
+    first = read_result(r, parent, child)
+    last = read_result(r, parent, child, first["next_offset"], call="tail")
+    assert first["result"] + last["result"] == expected
+    assert first["result_length"] == len(expected)
+    assert secret not in json.dumps(r.db.all("SELECT result FROM tool_runs"))
+
+
+def test_result_pages_are_read_observations_and_survive_backup(settings, tmp_path):
+    import sqlite3
+    from agent4good.execution import ExecutionJournal
+    from agent4good.tools import SPECS
+
+    r, parent = runnable(settings)
+    child = spawn(r, parent)
+    r.db.execute("UPDATE tasks SET status='done',result=? WHERE id=?", ("text" * 1200, child))
+    args = {"child_id": child, "offset": "4000", "limit": "4000"}
+    assert SPECS["worker_result_read"].action_class == "READ"
+    journal = ExecutionJournal(r.db, settings)
+    for call_id in ["one", "two"]:
+        journal.checkpoint(
+            parent, [], [{"name": "worker_result_read", "arguments": json.dumps(args), "call_id": call_id}]
+        )
+    assert len(r.db.all("SELECT * FROM plan_steps WHERE tool='worker_result_read'")) == 2
+    with sqlite3.connect(r.db.path) as source, sqlite3.connect(tmp_path / "result-backup.sqlite3") as dest:
+        source.backup(dest)
+    restored = ToolRegistry(settings, Database(tmp_path / "result-backup.sqlite3"))
+    assert read_result(restored, parent, child, 4000)["result"] == "text" * 200

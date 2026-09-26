@@ -89,8 +89,17 @@ INTERNAL_TOOLS = [
     ),
     function(
         "worker_results",
-        "Read direct child statuses and bounded final results, plus your last ten received messages. Never returns private transcripts.",
+        "Read direct child statuses and 750-character result previews with result_truncated, result_length and next_offset. Use worker_result_read for remaining text. Includes last ten inbound messages, never private transcripts.",
         {},
+    ),
+    function(
+        "worker_result_read",
+        "Read one page of a terminal direct child's saved final answer, never its transcript. Follow next_offset until has_more is false; disclose incomplete retrieval. Offsets count redacted Unicode characters.",
+        {
+            "child_id": "Direct child task ID from worker_results",
+            "offset": "Zero-based character offset as decimal string; use next_offset to continue",
+            "limit": "Page size as decimal string, 1 to 4000 characters",
+        },
     ),
     function(
         "worker_wait",
@@ -298,6 +307,18 @@ OUTPUTS = {
             "ask_owner",
         )
     },
+    "worker_result_read": object_schema(
+        data=object_schema(
+            child_id=STRING,
+            status={"enum": ["done", "failed", "cancelled"]},
+            result={"type": "string", "maxLength": 4000},
+            offset={"type": "integer", "minimum": 0},
+            result_length={"type": "integer", "minimum": 0},
+            has_more={"type": "boolean"},
+            next_offset={"type": ["integer", "null"], "minimum": 0},
+            result_sha256={"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        )
+    ),
     "browser_run": object_schema(
         status=STRING,
         observations={"type": "array"},
@@ -425,6 +446,10 @@ def build_specs():
         schema = deepcopy(definition["parameters"])
         for field in schema["properties"].values():
             field["maxLength"] = 100000
+        if name == "worker_result_read":
+            schema["properties"]["child_id"].update(minLength=1, maxLength=100)
+            for field in ("offset", "limit"):
+                schema["properties"][field].update(pattern="^[0-9]{1,10}$", maxLength=10)
         if name == "ask_owner":
             schema["properties"]["question"].update(minLength=1, maxLength=4000)
         if name == "skill_read":
@@ -500,7 +525,7 @@ def build_specs():
                 or name == "mission_plan"
                 or name.startswith("schedule_")
                 or name.startswith("worker_")
-                and name != "worker_results"
+                and name not in {"worker_results", "worker_result_read"}
                 else "READ"
             ),
             timeout_seconds=360 if name in {"sandbox_run", "browser_run"} else 60,
@@ -1369,7 +1394,7 @@ class ToolRegistry:
                 else:
                     from .coordination import dispatch
 
-                    result = dispatch(conn, self.db, self.settings, task_id, name, args)
+                    result = dispatch(conn, self.db, self.settings, task_id, name, args, redact=self._redact)
                 validate_schema(spec.output_schema, result, "output")
                 result_json = json.dumps(result)
                 if len(result_json) > 50000:
