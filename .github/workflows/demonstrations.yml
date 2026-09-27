@@ -1,0 +1,61 @@
+name: Demonstration prerequisites
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/demonstration_readiness.py'
+      - 'tests/test_demonstration_readiness.py'
+      - '.github/workflows/demonstrations.yml'
+  pull_request:
+    paths:
+      - 'scripts/demonstration_readiness.py'
+      - 'tests/test_demonstration_readiness.py'
+      - '.github/workflows/demonstrations.yml'
+permissions:
+  contents: read
+jobs:
+  prerequisites:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+      - run: uv sync --frozen --group dev
+      - run: docker build -f sandbox/Dockerfile -t agent4good-sandbox:demo .
+      - run: docker build -f browser/Dockerfile -t agent4good-browser:demo .
+      - name: Collect real backend prerequisites without model credentials
+        run: |
+          export A4G_TEST_SANDBOX_IMAGE="$(docker image inspect agent4good-sandbox:demo --format '{{.Id}}')"
+          export A4G_TEST_BROWSER_IMAGE="$(docker image inspect agent4good-browser:demo --format '{{.Id}}')"
+          set +e
+          uv run python scripts/demonstration_readiness.py --output /tmp/a4g-demonstration-evidence
+          result=$?
+          set -e
+          test "$result" -eq 2
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('/tmp/a4g-demonstration-evidence/report.json').read_text())
+          assert set(report['groups']) == {'development', 'browser', 'recovery'}
+          assert all(group['status'] == 'passed' for group in report['groups'].values()), report['groups']
+          assert report['complete_workflows_verified'] is False
+          print('All component prerequisites passed. Complete live workflows remain unverified.')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: demonstration-prerequisites
+          path: |
+            /tmp/a4g-demonstration-evidence/report.json
+            /tmp/a4g-demonstration-evidence/*.xml
+            /tmp/a4g-demonstration-evidence/*.log
+            /tmp/a4g-browser-proof.png
+      - name: Verify container cleanup
+        if: always()
+        run: |
+          test -z "$(docker ps -aq --filter label=agent4good.browser=true)"
+          test -z "$(docker ps -aq --filter label=agent4good.sandbox=true)"
