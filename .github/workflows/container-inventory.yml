@@ -1,0 +1,53 @@
+name: Container license evidence
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/container-inventory.yml'
+      - 'scripts/container_inventory.py'
+      - 'tests/test_container_inventory.py'
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: application
+            dockerfile: Dockerfile
+          - kind: browser
+            dockerfile: browser/Dockerfile
+          - kind: sandbox
+            dockerfile: sandbox/Dockerfile
+          - kind: minio
+            dockerfile: deploy/object-storage/minio.Dockerfile
+          - kind: mc
+            dockerfile: deploy/object-storage/mc.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: false
+      - name: Build locally without publishing
+        env:
+          DOCKERFILE: ${{ matrix.dockerfile }}
+        run: docker build --platform linux/amd64 --file "$DOCKERFILE" --tag agentforge-inventory:ci .
+      - name: Inspect final image without starting services
+        env:
+          KIND: ${{ matrix.kind }}
+        run: |
+          python3 scripts/container_inventory.py agentforge-inventory:ci \
+            --kind "$KIND" --commit "$(git rev-parse HEAD)" --output evidence
+          cat evidence/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: container-inventory-${{ matrix.kind }}-${{ github.sha }}
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 90
