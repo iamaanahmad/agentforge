@@ -1,0 +1,9 @@
+{
+  "test_vault_credentials": 0,
+  "test_processes_stopped": true,
+  "test_port_closed": true,
+  "known_secret_scan": "passed",
+  "original_health_http_status": 200,
+  "temporary_clone_removed": true,
+  "test_key_removed": true
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "task_id": "task_3be8431c59934401acd37a6c21378e15",
+    "tool": "mission_status",
+    "status": "done",
+    "attempts": 1
+  },
+  {
+    "task_id": "task_3be8431c59934401acd37a6c21378e15",
+    "tool": "mission_plan",
+    "status": "done",
+    "attempts": 1
+  },
+  {
+    "task_id": "task_2fc128e8d5874bf1a36a2b927e2fbff2",
+    "tool": "artifact_write",
+    "status": "done",
+    "attempts": 1
+  },
+  {
+    "task_id": "task_ccb26c51548842c7a5b138b3e18a410e",
+    "tool": "artifact_write",
+    "status": "done",
+    "attempts": 1
+  }
+]

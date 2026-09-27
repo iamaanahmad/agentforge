@@ -1,0 +1,97 @@
+{
+  "id": "mission_0122bd1b39bf4ad48dfe96a8f8a7c21b",
+  "spec": {
+    "title": "TEST Cycle 8: agentforge positioning brief",
+    "objective": "Create a useful positioning brief for agentforge from ONLY these facts: agentforge 0.2.0 is MIT-licensed and self-hosted. It has one owner, saved tasks and chats, mission plans, saved artifacts, and exact approvals for external writes. Technically able founders are an audience hypothesis, not validated buyers. Production operation, buyer demand, pricing and broad autonomous reliability are unverified. Bedrock model requests transfer task content to AWS; self-hosting does not mean all data stays on the host. Planner: create one bounded strategist step with artifact_write. Worker: save positioning-brief.md with exactly three distinct positioning options, each naming its proposed audience and a factual benefit. Recommend one option with a reason. Add three interview questions to test demand, plus a Limits section covering the unknowns and AWS transfer. Keep it under 650 words. Finish with the artifact reference. Do not claim external research, contact anyone, or invent results.",
+    "criteria": [
+      {
+        "id": "criterion_0",
+        "description": "The saved positioning-brief.md contains three distinct options, a recommendation, and three useful interview questions.",
+        "kind": "owner",
+        "name": "",
+        "contains": "",
+        "arguments": {},
+        "field": "",
+        "target": null,
+        "unit": ""
+      },
+      {
+        "id": "criterion_1",
+        "description": "The brief states unknown demand, pricing, production and reliability, and discloses Bedrock data transfer to AWS.",
+        "kind": "owner",
+        "name": "",
+        "contains": "",
+        "arguments": {},
+        "field": "",
+        "target": null,
+        "unit": ""
+      }
+    ],
+    "constraints": "Use only strategist with artifact_write. One planner and one deliverable task. No external writes, contact, browsing or invented evidence. Mark this as a test positioning draft.",
+    "budget": {
+      "tasks": 3,
+      "steps": 16,
+      "tool_calls": 12,
+      "model_tokens": 300000,
+      "model_cost_usd": null
+    },
+    "deadline": "2026-09-27T14:49:00+00:00",
+    "tools": [
+      "artifact_write"
+    ],
+    "agents": [
+      "strategist"
+    ],
+    "writes": false,
+    "priority": 0
+  },
+  "status": "needs_evidence",
+  "revision": 1,
+  "verification": [
+    {
+      "id": "criterion_0",
+      "description": "The saved positioning-brief.md contains three distinct options, a recommendation, and three useful interview questions.",
+      "met": false,
+      "evidence": []
+    },
+    {
+      "id": "criterion_1",
+      "description": "The brief states unknown demand, pricing, production and reliability, and discloses Bedrock data transfer to AWS.",
+      "met": false,
+      "evidence": []
+    }
+  ],
+  "created_at": "2026-09-27T13:49:12.415698+00:00",
+  "updated_at": "2026-09-27T13:50:29.070029+00:00",
+  "usage": {
+    "tasks": 2,
+    "steps": 5,
+    "tool_calls": 3,
+    "model_tokens": 109017,
+    "model_cost_usd": 0.0
+  },
+  "steps": [
+    {
+      "node_key": "_planner_task_3be8431c59934401acd37a6c21378e15",
+      "dependencies": [],
+      "planner": 1,
+      "id": "task_3be8431c59934401acd37a6c21378e15",
+      "title": "Plan: TEST Cycle 8: agentforge positioning brief",
+      "agent": "strategist",
+      "status": "done",
+      "error": "",
+      "priority": 0
+    },
+    {
+      "node_key": "create_positioning_brief",
+      "dependencies": [],
+      "planner": 0,
+      "id": "task_2fc128e8d5874bf1a36a2b927e2fbff2",
+      "title": "Create agentforge positioning brief artifact",
+      "agent": "strategist",
+      "status": "done",
+      "error": "",
+      "priority": 0
+    }
+  ]
+}

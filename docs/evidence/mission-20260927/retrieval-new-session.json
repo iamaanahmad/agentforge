@@ -1,0 +1,21 @@
+{
+  "checked_at": "2026-09-27T13:54:15.497726+00:00",
+  "unauthenticated_status": 401,
+  "fresh_login_status": 200,
+  "mission_status": "done",
+  "criteria_met": 2,
+  "artifacts": [
+    {
+      "id": "artifact_ed6a69daea244708b24bcf2a67ffc12d",
+      "name": "positioning-brief.md",
+      "sha256": "a1fe7399b1db7ae133adef1d45a282cfa10fdce574bfbf6b5847b47544083100",
+      "http_status": 200
+    },
+    {
+      "id": "artifact_82791cc2e8c744979d4f85521dda6695",
+      "name": "positioning-brief.md",
+      "sha256": "9841e010b1779f5bf4a6dd16f822376d70f2f5eb0edaa0422d463a8827408e59",
+      "http_status": 200
+    }
+  ]
+}
