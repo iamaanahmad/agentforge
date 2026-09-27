@@ -1,0 +1,83 @@
+[
+  {
+    "id": "task_2fc128e8d5874bf1a36a2b927e2fbff2",
+    "status": "done",
+    "model_calls": [
+      {
+        "id": "model_f4da134fc45d45ab83bacfe8d2559d28",
+        "task_id": "task_2fc128e8d5874bf1a36a2b927e2fbff2",
+        "reserved_tokens": 17398,
+        "reserved_micro_usd": -1,
+        "status": "completed",
+        "usage": "{\"input_tokens\": 2043, \"output_tokens\": 986, \"total_tokens\": 3029}",
+        "created_at": "2026-09-27T13:49:56.933997+00:00"
+      },
+      {
+        "id": "model_d03b8b2f34144ebe8df8e1dcaf6d9011",
+        "task_id": "task_2fc128e8d5874bf1a36a2b927e2fbff2",
+        "reserved_tokens": 28588,
+        "reserved_micro_usd": -1,
+        "status": "completed",
+        "usage": "{\"input_tokens\": 3414, \"output_tokens\": 241, \"total_tokens\": 3655}",
+        "created_at": "2026-09-27T13:50:22.258448+00:00"
+      }
+    ]
+  },
+  {
+    "id": "task_3be8431c59934401acd37a6c21378e15",
+    "status": "done",
+    "model_calls": [
+      {
+        "id": "model_215e9b4fe0044bd5b4e83953dac28b6a",
+        "task_id": "task_3be8431c59934401acd37a6c21378e15",
+        "reserved_tokens": 16985,
+        "reserved_micro_usd": -1,
+        "status": "completed",
+        "usage": "{\"input_tokens\": 1952, \"output_tokens\": 56, \"total_tokens\": 2008}",
+        "created_at": "2026-09-27T13:49:44.800466+00:00"
+      },
+      {
+        "id": "model_54fbf1e51d234835872b4da731ebc1a8",
+        "task_id": "task_3be8431c59934401acd37a6c21378e15",
+        "reserved_tokens": 21000,
+        "reserved_micro_usd": -1,
+        "status": "completed",
+        "usage": "{\"input_tokens\": 2873, \"output_tokens\": 429, \"total_tokens\": 3302}",
+        "created_at": "2026-09-27T13:49:48.126813+00:00"
+      },
+      {
+        "id": "model_13619b60f5f543819145bf26ff850555",
+        "task_id": "task_3be8431c59934401acd37a6c21378e15",
+        "reserved_tokens": 25046,
+        "reserved_micro_usd": -1,
+        "status": "completed",
+        "usage": "{\"input_tokens\": 3334, \"output_tokens\": 236, \"total_tokens\": 3570}",
+        "created_at": "2026-09-27T13:49:55.250043+00:00"
+      }
+    ]
+  },
+  {
+    "id": "task_ccb26c51548842c7a5b138b3e18a410e",
+    "status": "done",
+    "model_calls": [
+      {
+        "id": "model_20f6c8e3c6504535846be5167441ae0b",
+        "task_id": "task_ccb26c51548842c7a5b138b3e18a410e",
+        "reserved_tokens": 23942,
+        "reserved_micro_usd": -1,
+        "status": "completed",
+        "usage": "{\"input_tokens\": 3453, \"output_tokens\": 1157, \"total_tokens\": 4610}",
+        "created_at": "2026-09-27T13:52:19.633741+00:00"
+      },
+      {
+        "id": "model_28e3de8630854c75857320bb28b8b5e9",
+        "task_id": "task_ccb26c51548842c7a5b138b3e18a410e",
+        "reserved_tokens": 35684,
+        "reserved_micro_usd": -1,
+        "status": "completed",
+        "usage": "{\"input_tokens\": 4686, \"output_tokens\": 260, \"total_tokens\": 4946}",
+        "created_at": "2026-09-27T13:52:33.808921+00:00"
+      }
+    ]
+  }
+]

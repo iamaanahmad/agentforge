@@ -45,4 +45,5 @@ SQLite schema 8 adds missions, membership, plan history and owner reviews. Postg
 
 `tests/test_missions.py` exercises actual task claims, registry calls, artifact writes, dependency order, shared limits, permission refusal, owner review and revision conflicts. The daemon acceptance kills and restarts a real worker process after its source task finishes. It checks that the report completes without repeating the source artifact or plan. A separate test pauses during artifact dispatch and verifies receipt reuse after resume. `tests/test_infrastructure.py` runs a mission against real PostgreSQL and private object storage, then restores and verifies its evidence.
 
-These acceptance tests use explicitly scripted model responses and temporary workspaces. They do not send messages or spend money. Live model mission completion and production operation remain unverified.
+These acceptance tests use explicitly scripted model responses and temporary workspaces. They do not send messages or spend money. A [fresh-install live Bedrock mission](fresh-mission-acceptance.md) passed after one owner-directed correction on September 27, 2026.
+Unattended quality, repeat reliability, and production operation remain unverified.

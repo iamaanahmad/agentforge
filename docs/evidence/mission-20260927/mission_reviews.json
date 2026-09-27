@@ -1,0 +1,16 @@
+[
+  {
+    "mission_id": "mission_0122bd1b39bf4ad48dfe96a8f8a7c21b",
+    "criterion_id": "criterion_0",
+    "evidence": "Test owner accepted corrected artifact artifact_82791cc2e8c744979d4f85521dda6695, positioning-brief.md. Retrieved by authenticated download and independently read. It has three distinct audience hypotheses, a recommendation with rationale, and three interview questions. Unsupported pricing, account-limit and every-action claims are removed. Measured 587 whitespace-separated words, below 650. The first artifact remains rejected; use the corrected ID only.",
+    "accepted": 1,
+    "created_at": "2026-09-27T13:53:22.200292+00:00"
+  },
+  {
+    "mission_id": "mission_0122bd1b39bf4ad48dfe96a8f8a7c21b",
+    "criterion_id": "criterion_1",
+    "evidence": "Test owner accepted corrected artifact artifact_82791cc2e8c744979d4f85521dda6695 after independent reading. Its Limits section marks buyer demand, pricing, production operation and broad autonomous reliability unknown. Audience segments are explicitly hypotheses. AWS Data Transfer Disclosure states that Bedrock sends task content to AWS and self-hosting does not keep all data on the host.",
+    "accepted": 1,
+    "created_at": "2026-09-27T13:53:32.713998+00:00"
+  }
+]
