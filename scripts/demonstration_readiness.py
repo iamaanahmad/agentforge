@@ -10,6 +10,9 @@ import hashlib
 import json
 import os
 import signal
+import shutil
+import stat
+import tempfile
 from pathlib import Path
 import subprocess
 import sys
@@ -107,7 +110,10 @@ def main():
         xml = output / (name + ".xml")
         command = [sys.executable, "-m", "pytest", "-q", *nodes, "--junitxml=" + str(xml)]
         # These tests own disposable tmp_path fixtures; pytest retains only marked test data.
-        command.append("--basetemp=" + str(output / (name + "-fixtures")))
+        # AF_UNIX socket paths are limited to about 108 bytes. Evidence destinations
+        # can be arbitrarily deep; keep executing fixtures on a short private path.
+        fixtures = Path(tempfile.mkdtemp(prefix="a4gd-", dir="/tmp"))
+        command.append("--basetemp=" + str(fixtures))
         with (output / (name + ".log")).open("w") as log:
             process = subprocess.Popen(
                 command, cwd=ROOT, env=env, stdout=log, stderr=log, start_new_session=True
@@ -119,6 +125,17 @@ def main():
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait(timeout=10)
                 code = 124
+        try:
+            shutil.copytree(
+                fixtures,
+                output / (name + "-fixtures"),
+                symlinks=True,
+                ignore=lambda directory, names: [
+                    entry for entry in names if stat.S_ISSOCK((Path(directory) / entry).lstat().st_mode)
+                ],
+            )
+        finally:
+            shutil.rmtree(fixtures)
         report["groups"][name] = classify(xml, code, [n.split("::")[-1] for n in nodes])
         report["groups"][name]["returncode"] = code
         print(name + ": " + report["groups"][name]["status"], flush=True)
