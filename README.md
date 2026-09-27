@@ -13,6 +13,8 @@ Keep conversations, plans, approvals, and evidence in one workspace you host.
 
 [Quick start](#run-locally) · [Deployment](#deploy-and-operate) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md) · [Releases](https://github.com/iamaanahmad/agentforge/releases)
 
+Read the [0.2.0 product update](docs/release-0.2.0.md) for release scope, licensing, and the supervised mission result.
+
 ## What you can do
 
 - **Keep each task in its own conversation.** Send follow-ups, answer questions, and retrieve previous replies and results.
