@@ -1,6 +1,49 @@
 import time
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from agent4good.db import Database, now
+
+
+def test_analytics_is_disabled_without_key(owner, app):
+    assert owner.post("/api/analytics/pageview", json={"page": "overview"}).json() == {"ok": True}
+    assert owner.post("/api/analytics/pageview", json={"page": "private/path"}).status_code == 422
+    assert not app.state.db.one("SELECT 1 FROM events WHERE kind='analytics_first_result'")
+
+
+def test_first_accepted_mission_view_is_captured_once(owner, app, settings, monkeypatch):
+    import json
+    from agent4good import missions
+    from agent4good import analytics
+
+    sent = []
+
+    class Accepted:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+
+    def record(request, timeout):
+        sent.append(json.loads(request.data))
+        return Accepted()
+
+    monkeypatch.setattr(analytics.urllib.request, "urlopen", record)
+    settings.posthog_public_key = "test-public-key"
+    with app.state.db.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        mission_id = missions.create(conn, missions.MissionInput(
+            title="[TEST] Report", objective="Save a useful result",
+            criteria=[missions.Criterion(id="accepted", description="Owner accepted")],
+            deadline=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+        ))
+        conn.execute("UPDATE missions SET status='done' WHERE id=?", (mission_id,))
+    assert owner.post("/api/analytics/pageview", json={"page": "missions"}).status_code == 200
+    for _ in range(2):
+        assert owner.get("/api/missions/" + mission_id).status_code == 200
+    assert [row["event"] for row in sent] == ["owner_pageview", "first_useful_result"]
+    assert all(row["properties"]["test_run"] for row in sent)
+    assert all(set(row["properties"]) <= {"page", "test_run"} for row in sent)
 
 
 def test_private_routes_require_login(client):

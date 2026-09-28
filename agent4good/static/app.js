@@ -30,9 +30,14 @@ async function render() {
   rendering = true;
   const routeHash = location.hash;
   const route = names[location.hash.slice(1).split('/')[0]] ? location.hash.slice(1).split('/')[0] : 'overview';
+  const changedPage = current !== route || !window.__pageviewSent;
   current = route;
   try {
     const overview = await api('overview');
+    if (changedPage) {
+      window.__pageviewSent = true;
+      mutate('analytics/pageview', {page: route}).catch(() => {});
+    }
     $('#workspace-name').textContent = overview.project.name;
     $('#worker-dot').classList.toggle('online', overview.worker.online);
     $('#worker-label').textContent = overview.worker.online ? 'Operator online' : 'Operator offline';
