@@ -6,6 +6,9 @@ on:
       - '.github/workflows/container-inventory.yml'
       - 'scripts/container_inventory.py'
       - 'tests/test_container_inventory.py'
+      - 'deploy/object-storage/minio.Dockerfile'
+      - 'deploy/object-storage/mc.Dockerfile'
+      - 'deploy/object-storage/README.md'
 permissions:
   contents: read
 jobs:

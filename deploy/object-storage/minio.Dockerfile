@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/minio /usr/local/bin/minio
 COPY --from=build /src/LICENSE /usr/share/licenses/minio/LICENSE
+COPY --from=build /src/NOTICE /usr/share/licenses/minio/NOTICE
+COPY --from=build /src/CREDITS /usr/share/licenses/minio/CREDITS
+COPY --from=build /src/go.mod /usr/share/licenses/minio/go.mod
+COPY --from=build /src/go.sum /usr/share/licenses/minio/go.sum
 LABEL org.opencontainers.image.source="https://github.com/minio/minio" \
       org.opencontainers.image.revision="07c3a429bfed433e49018cb0f78a52145d4bedeb" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
