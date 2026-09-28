@@ -1,6 +1,6 @@
-# Fresh-install mission acceptance
+# agentforge 0.2.0 fresh-install mission report
 
-One fresh-install live Bedrock mission completed after a review-driven correction. Both criteria passed.
+agentforge completed one fresh-install mission with live AWS Bedrock calls after an owner-directed correction. Both criteria passed.
 This proves a supervised mission path, not unattended quality or production readiness.
 
 ## Installation and scope
@@ -63,7 +63,7 @@ The public bundle preserves synthetic test records and exact artifact bytes.
 These files are operator-recorded evidence, not a third-party attestation.
 No credential, account identifier, owner database, or private workspace transcript is included.
 Tool receipts expose only task ID, tool name, status, and attempt count.
-The [checksum manifest](evidence/mission-20260927/SHA256SUMS) covers the exported files.
+The [mission evidence checksum manifest](evidence/mission-20260927/SHA256SUMS) covers the exported files.
 
 - [Original mission contract](evidence/mission-20260927/draft.json)
 - [Rejected first draft](evidence/mission-20260927/positioning-brief-first-draft.md), retained as failed evidence, not endorsed product copy

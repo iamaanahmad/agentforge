@@ -85,7 +85,7 @@ Keep both processes running. Restart both after changing server configuration.
 You can save drafts and memory without model credentials. AI execution requires a valid selected provider.
 There is no application mode that reports fake model success.
 See [clean-install evidence](docs/install-verification.md) for tested steps and remaining limits.
-The [live mission report](docs/fresh-mission-acceptance.md) records one supervised Bedrock mission, including a rejected draft and correction.
+The [agentforge fresh-install mission report](docs/fresh-mission-acceptance.md) records one supervised Bedrock mission, including a rejected draft and correction.
 
 ## Complete your first task
 

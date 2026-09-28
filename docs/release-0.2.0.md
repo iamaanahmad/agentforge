@@ -1,4 +1,4 @@
-# agentforge 0.2.0 is available
+# agentforge 0.2.0: self-hosted AI operator release
 
 Published September 27, 2026. Release tagged September 25, 2026.
 
@@ -19,7 +19,7 @@ The project was previously called Agent4Good.
 
 Each installation supports one owner. SQLite runs on one host.
 Optional PostgreSQL, coding sandbox, and browser services require separate setup.
-Read the [release notes](https://github.com/iamaanahmad/agentforge/releases/tag/v0.2.0) for the shipped scope and downloadable files.
+Read the [agentforge 0.2.0 GitHub release](https://github.com/iamaanahmad/agentforge/releases/tag/v0.2.0) for the shipped scope and downloadable files.
 
 ## MIT license and setup
 
@@ -40,7 +40,7 @@ The mission produced a positioning brief. Its first draft invented claims and fa
 The test operator supplied a correction, and the model saved a revised brief that met both acceptance criteria.
 Both drafts remained retrievable after a service restart and a new login.
 
-The [mission report](https://github.com/iamaanahmad/agentforge/blob/main/docs/fresh-mission-acceptance.md) includes the failed draft, correction, saved results, and repeat procedure.
+The [agentforge fresh-install mission report](https://github.com/iamaanahmad/agentforge/blob/main/docs/fresh-mission-acceptance.md) includes the failed draft, correction, saved results, and repeat procedure.
 This later test adds evidence beyond the original release notes.
 
 One assisted text mission does not establish unattended quality, repeated reliability, or production readiness.
