@@ -37,7 +37,17 @@ def metadata(raw, path):
 
 def scan(archive, go_reader=None):
     result = {
-        key: [] for key in ("os_packages", "python", "native_files", "notices", "wheels", "browsers", "go", "source_files")
+        key: []
+        for key in (
+            "os_packages",
+            "python",
+            "native_files",
+            "notices",
+            "wheels",
+            "browsers",
+            "go",
+            "source_files",
+        )
     }
     findings = [
         "Inventory is technical evidence, not legal clearance or proof of complete notices.",
@@ -65,8 +75,7 @@ def scan(archive, go_reader=None):
         is_os = path == "var/lib/dpkg/status"
         is_go = path in ("usr/local/bin/minio", "usr/local/bin/mc")
         is_source = path in {
-            f"usr/share/licenses/{kind}/{name}"
-            for kind in ("minio", "mc") for name in ("go.mod", "go.sum")
+            f"usr/share/licenses/{kind}/{name}" for kind in ("minio", "mc") for name in ("go.mod", "go.sum")
         }
         if not any((is_native, is_notice, is_meta, is_wheel, is_browser, is_os, is_go, is_source)):
             continue
