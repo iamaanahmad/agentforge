@@ -77,6 +77,9 @@ def scan(archive, go_reader=None):
         is_source = path in {
             f"usr/share/licenses/{kind}/{name}" for kind in ("minio", "mc") for name in ("go.mod", "go.sum")
         }
+        is_source = is_source or path in {
+            f"usr/share/source/{kind}-corresponding-source.tar.gz" for kind in ("minio", "mc")
+        }
         if not any((is_native, is_notice, is_meta, is_wheel, is_browser, is_os, is_go, is_source)):
             continue
         digest = hashlib.sha256(prefix)
