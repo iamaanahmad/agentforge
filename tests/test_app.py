@@ -49,7 +49,7 @@ def test_first_accepted_mission_view_is_captured_once(owner, app, settings, monk
         assert owner.get("/api/missions/" + mission_id).status_code == 200
     assert [row["event"] for row in sent] == ["owner_pageview", "first_useful_result"]
     assert all(row["properties"]["test_run"] for row in sent)
-    assert all(set(row["properties"]) <= {"page", "test_run"} for row in sent)
+    assert all(set(row["properties"]) <= {"page", "test_run", "$insert_id"} for row in sent)
 
 
 def test_private_routes_require_login(client):

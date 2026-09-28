@@ -32,7 +32,7 @@ from .model_router import ModelRouter
 from .db import Database, now
 from .policy import PolicyDocument, PolicyError
 from .tools import ToolRegistry
-from .analytics import capture
+from .analytics import capture, capture_first_result
 
 
 class StrictInput(BaseModel):
@@ -407,16 +407,11 @@ def create_app(settings=None):
             try:
                 result = missions.detail(conn, mission_id)
                 if settings.posthog_public_key and result["status"] == "done":
-                    conn.execute("BEGIN IMMEDIATE")
                     seen = conn.execute(
                         "SELECT 1 FROM events WHERE kind='analytics_first_result' LIMIT 1"
                     ).fetchone()
                     if not seen:
-                        conn.execute(
-                            "INSERT INTO events(task_id,kind,message,created_at) VALUES (NULL,'analytics_first_result','First accepted mission viewed',?)",
-                            (now(),),
-                        )
-                        background.add_task(capture, settings, "first_useful_result", {})
+                        background.add_task(capture_first_result, db, settings)
                 return result
             except ValueError as exc:
                 raise HTTPException(404, str(exc)) from exc
