@@ -19,8 +19,10 @@ def test_first_accepted_mission_view_is_captured_once(owner, app, settings, monk
 
     class Accepted:
         status = 200
+
         def __enter__(self):
             return self
+
         def __exit__(self, *args):
             return False
 
@@ -32,11 +34,15 @@ def test_first_accepted_mission_view_is_captured_once(owner, app, settings, monk
     settings.posthog_public_key = "test-public-key"
     with app.state.db.connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        mission_id = missions.create(conn, missions.MissionInput(
-            title="[TEST] Report", objective="Save a useful result",
-            criteria=[missions.Criterion(id="accepted", description="Owner accepted")],
-            deadline=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
-        ))
+        mission_id = missions.create(
+            conn,
+            missions.MissionInput(
+                title="[TEST] Report",
+                objective="Save a useful result",
+                criteria=[missions.Criterion(id="accepted", description="Owner accepted")],
+                deadline=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+            ),
+        )
         conn.execute("UPDATE missions SET status='done' WHERE id=?", (mission_id,))
     assert owner.post("/api/analytics/pageview", json={"page": "missions"}).status_code == 200
     for _ in range(2):

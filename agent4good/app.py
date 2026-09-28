@@ -46,7 +46,20 @@ class MissionReview(StrictInput):
 
 
 class PageView(StrictInput):
-    page: Literal["overview", "tasks", "chats", "missions", "schedules", "agents", "approvals", "memory", "integrations", "settings", "timeline", "activity"]
+    page: Literal[
+        "overview",
+        "tasks",
+        "chats",
+        "missions",
+        "schedules",
+        "agents",
+        "approvals",
+        "memory",
+        "integrations",
+        "settings",
+        "timeline",
+        "activity",
+    ]
 
 
 class Login(StrictInput):
@@ -395,9 +408,14 @@ def create_app(settings=None):
                 result = missions.detail(conn, mission_id)
                 if settings.posthog_public_key and result["status"] == "done":
                     conn.execute("BEGIN IMMEDIATE")
-                    seen = conn.execute("SELECT 1 FROM events WHERE kind='analytics_first_result' LIMIT 1").fetchone()
+                    seen = conn.execute(
+                        "SELECT 1 FROM events WHERE kind='analytics_first_result' LIMIT 1"
+                    ).fetchone()
                     if not seen:
-                        conn.execute("INSERT INTO events(task_id,kind,message,created_at) VALUES (NULL,'analytics_first_result','First accepted mission viewed',?)", (now(),))
+                        conn.execute(
+                            "INSERT INTO events(task_id,kind,message,created_at) VALUES (NULL,'analytics_first_result','First accepted mission viewed',?)",
+                            (now(),),
+                        )
                         background.add_task(capture, settings, "first_useful_result", {})
                 return result
             except ValueError as exc:

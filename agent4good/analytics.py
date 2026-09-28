@@ -16,7 +16,11 @@ def capture(settings, event, properties):
     payload = {
         "api_key": settings.posthog_public_key,
         "event": event,
-        "distinct_id": hmac.new(settings.session_secret.encode(), (settings.tenant_id + ":" + settings.environment).encode(), hashlib.sha256).hexdigest(),
+        "distinct_id": hmac.new(
+            settings.session_secret.encode(),
+            (settings.tenant_id + ":" + settings.environment).encode(),
+            hashlib.sha256,
+        ).hexdigest(),
         "properties": {**properties, "test_run": settings.environment != "production"},
     }
     request = urllib.request.Request(
