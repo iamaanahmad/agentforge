@@ -17,4 +17,17 @@ The source archives and notice links returned HTTP 200 during this review. The p
 
 The archive and map provide technical evidence, not legal clearance. The upstream `CREDITS` files give many third-party terms, but each embedded module's terms and any missing or conflicting notices still need legal review. Do not describe these images as cleared for redistribution until that review covers the exact image being shipped. Do not use an older CI artifact as the source route for a later image build.
 
+### Seven linked-module notice findings
+
+The server's pinned `go.mod` at `07c3a429bfed433e49018cb0f78a52145d4bedeb` and the client's at `7394ce0dd2a80935aded936b09fa12cbb3cb8096` select the four versions below. They account for four server entries and three client entries. The source SHA256 values identify the exact Go module ZIP bytes; each image's generated `go-source-map.json` also records its Go checksum and packaged ZIP path.
+
+| Linked module and pinned source | Images | Source SHA256 | Verified evidence in pinned module ZIP | Remaining question |
+| --- | --- | --- | --- | --- |
+| [`github.com/minio/csvparser@v1.0.0`](https://proxy.golang.org/github.com/minio/csvparser/@v/v1.0.0.zip) | server | `48e6c6e59c10d0cedc32f2c3960a46421ecfabd52513db310fc7090d9035b858` | No root notice. `README.md` lines 54–55 name the Go `encoding/csv` fork. `reader.go` lines 1–3 and `writer.go` lines 1–3 refer to the Go license; the image packages `go-LICENSE`. | Confirm terms for MinIO changes and whether the packaged Go license covers every copied file. |
+| [`github.com/minio/colorjson@v1.0.8`](https://proxy.golang.org/github.com/minio/colorjson/@v/v1.0.8.zip) | server, client | `a6bf204ad95817dcb32157a7dbfb455350e5091f0050ae873530a27bc5e1a9f1` | No root notice. `README.md` line 3 names the Go JSON fork. `colors.go` lines 1–3 and `encode.go` lines 1–3 refer to the Go license; the image packages `go-LICENSE`. | Confirm terms for colorization changes and any added MinIO code. |
+| [`github.com/minio/filepath@v1.0.0`](https://proxy.golang.org/github.com/minio/filepath/@v/v1.0.0.zip) | server, client | `0ebcf3fd5327893e82cb3904b43bd2cc0cff8c8ccbde12aef3e5f7c99d45afad` | No root notice. `walk.go` lines 1–3 refer to the Go license; the image packages `go-LICENSE`. | Confirm terms for changes to the Go-derived file. |
+| [`github.com/vbauerster/mpb/v8@v8.9.3`](https://proxy.golang.org/github.com/vbauerster/mpb/v8/@v/v8.9.3.zip) | server, client | `0d10a8ef056772c1d3ff39ea6e20e16268e2a4b0dca1d72dc988bbc70629d99b` | Root `UNLICENSE` exists in the pinned ZIP. The source-map audit now records its exact path and file SHA256. | Counsel must still review how its terms apply to distribution. |
+
+These file references are evidence, not a license conclusion. In particular, a source header that points to Go's license does not settle the terms for a fork's later changes. The generated source map keeps the three modules without a root file explicitly flagged and records matching source-header paths and hashes beside the packaged `go-LICENSE`.
+
 These pins restore build reproducibility; they do not establish production security or maintenance support. Review upstream maintenance and security before production use. A separately managed S3-compatible endpoint remains supported by the application. The default SQLite installation does not require these containers.

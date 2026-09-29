@@ -10,7 +10,10 @@ import tarfile
 import zipfile
 
 
-NOTICE_NAME = re.compile(r"^(license|licence|copying|notice|copyright|credits|authors)([._-]|$)", re.I)
+NOTICE_NAME = re.compile(
+    r"^(unlicense|license|licence|copying|notice|copyright|credits|authors)([._-]|$)", re.I
+)
+GO_LICENSE_REFERENCE = re.compile(r"license that can be found in (?:the )?https://golang\.org/LICENSE", re.I)
 
 
 def escape_go(value):
@@ -70,21 +73,36 @@ def audit(inventory, source_archive):
                 if not all(name.startswith(expected_root) for name in module_zip.namelist()):
                     raise ValueError(f"Unexpected source paths for {item['module']}@{item['version']}")
                 notices = []
+                source_license_references = []
                 for name in module_zip.namelist():
                     relative = name[len(expected_root) :]
                     if "/" not in relative and NOTICE_NAME.match(relative):
                         notices.append(
                             {"path": name, "sha256": hashlib.sha256(module_zip.read(name)).hexdigest()}
                         )
+                if not notices:
+                    for name in module_zip.namelist():
+                        if not name.endswith(".go"):
+                            continue
+                        source_file = module_zip.read(name)
+                        if GO_LICENSE_REFERENCE.search(source_file.decode("utf-8", errors="replace")):
+                            source_license_references.append(
+                                {
+                                    "path": name,
+                                    "sha256": hashlib.sha256(source_file).hexdigest(),
+                                    "referenced_license_path": "go-LICENSE",
+                                }
+                            )
             rows.append(
                 {
                     **item,
                     "source_path": zip_name,
                     "source_sha256": hashlib.sha256(source).hexdigest(),
                     "notice_files": notices,
+                    "source_license_references": source_license_references,
                     "notice_status": "root notice found"
                     if notices
-                    else "no root notice; review upstream terms",
+                    else "no root notice; source headers may reference Go license; review upstream terms",
                 }
             )
     return rows

@@ -9,11 +9,15 @@ import pytest
 from scripts.audit_go_sources import audit, escape_go
 
 
-def fixture(tmp_path, cache_hash="h1:correct"):
+def fixture(tmp_path, cache_hash="h1:correct", notice_name="LICENSE"):
     module = io.BytesIO()
     with zipfile.ZipFile(module, "w") as archive:
-        archive.writestr("example.com/Widget@v1.0.0/LICENSE", "MIT license text")
-        archive.writestr("example.com/Widget@v1.0.0/main.go", "package widget")
+        if notice_name:
+            archive.writestr("example.com/Widget@v1.0.0/" + notice_name, "License text")
+        archive.writestr(
+            "example.com/Widget@v1.0.0/main.go",
+            "// Use of this source code is governed by a BSD-style\n// license that can be found in https://golang.org/LICENSE\npackage widget",
+        )
     source = tmp_path / "source.tar.gz"
     prefix = "modules/example.com/!widget/@v/v1.0.0"
     files = {
@@ -47,3 +51,18 @@ def test_source_map_rejects_checksum_mismatch(tmp_path):
     source, inventory = fixture(tmp_path, "h1:wrong")
     with pytest.raises(ValueError, match="checksum differs"):
         audit(inventory, source)
+
+
+def test_unlicense_is_a_root_notice(tmp_path):
+    source, inventory = fixture(tmp_path, notice_name="UNLICENSE")
+    row = audit(inventory, source)[0]
+    assert row["notice_files"][0]["path"].endswith("/UNLICENSE")
+    assert row["source_license_references"] == []
+
+
+def test_missing_root_notice_retains_exact_source_header_reference(tmp_path):
+    source, inventory = fixture(tmp_path, notice_name=None)
+    row = audit(inventory, source)[0]
+    assert row["notice_files"] == []
+    assert row["source_license_references"][0]["path"].endswith("/main.go")
+    assert row["source_license_references"][0]["referenced_license_path"] == "go-LICENSE"
