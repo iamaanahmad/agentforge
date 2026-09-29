@@ -9,8 +9,6 @@ on:
       - 'deploy/object-storage/minio.Dockerfile'
       - 'deploy/object-storage/mc.Dockerfile'
       - 'tests/test_container_inventory.py'
-      - 'deploy/object-storage/minio.Dockerfile'
-      - 'deploy/object-storage/mc.Dockerfile'
       - 'deploy/object-storage/README.md'
 permissions:
   contents: read

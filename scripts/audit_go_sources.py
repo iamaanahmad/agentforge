@@ -71,16 +71,22 @@ def audit(inventory, source_archive):
                     raise ValueError(f"Unexpected source paths for {item['module']}@{item['version']}")
                 notices = []
                 for name in module_zip.namelist():
-                    relative = name[len(expected_root):]
+                    relative = name[len(expected_root) :]
                     if "/" not in relative and NOTICE_NAME.match(relative):
-                        notices.append({"path": name, "sha256": hashlib.sha256(module_zip.read(name)).hexdigest()})
-            rows.append({
-                **item,
-                "source_path": zip_name,
-                "source_sha256": hashlib.sha256(source).hexdigest(),
-                "notice_files": notices,
-                "notice_status": "root notice found" if notices else "no root notice; review upstream terms",
-            })
+                        notices.append(
+                            {"path": name, "sha256": hashlib.sha256(module_zip.read(name)).hexdigest()}
+                        )
+            rows.append(
+                {
+                    **item,
+                    "source_path": zip_name,
+                    "source_sha256": hashlib.sha256(source).hexdigest(),
+                    "notice_files": notices,
+                    "notice_status": "root notice found"
+                    if notices
+                    else "no root notice; review upstream terms",
+                }
+            )
     return rows
 
 
@@ -92,14 +98,22 @@ def main():
     args = parser.parse_args()
     inventory = json.loads(args.inventory.read_text())
     rows = audit(inventory, args.source_archive)
-    args.output.write_text(json.dumps({
-        "image": inventory["provenance"],
-        "binary_sha256": inventory["go"][0]["sha256"],
-        "source_archive_sha256": file_sha256(args.source_archive),
-        "modules": rows,
-        "missing_root_notices": [f"{row['module']}@{row['version']}" for row in rows if not row["notice_files"]],
-        "limit": "Files and checksums are evidence. License compatibility and completeness need legal review.",
-    }, indent=2) + "\n")
+    args.output.write_text(
+        json.dumps(
+            {
+                "image": inventory["provenance"],
+                "binary_sha256": inventory["go"][0]["sha256"],
+                "source_archive_sha256": file_sha256(args.source_archive),
+                "modules": rows,
+                "missing_root_notices": [
+                    f"{row['module']}@{row['version']}" for row in rows if not row["notice_files"]
+                ],
+                "limit": "Files and checksums are evidence. License compatibility and completeness need legal review.",
+            },
+            indent=2,
+        )
+        + "\n"
+    )
     print(f"Mapped {len(rows)} embedded modules to packaged source and notice records")
     print(f"Modules without a root notice: {sum(not row['notice_files'] for row in rows)}")
 
