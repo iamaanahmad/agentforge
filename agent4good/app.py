@@ -882,6 +882,10 @@ def create_app(settings=None):
     def autogpt_comparison():
         return FileResponse(static / "compare" / "autogpt.html")
 
+    @app.get("/alternatives/crewai")
+    def crewai_alternative():
+        return FileResponse(static / "compare" / "crewai.html")
+
     legal = Path(__file__).parent / "legal"
 
     @app.get("/terms")
