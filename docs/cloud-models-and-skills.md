@@ -100,6 +100,6 @@ Browser and coding tools still need their private Docker brokers. This release d
 Cloud adapters currently provide text and local function tools. Vision, streaming, and schema-constrained cloud final output are unavailable.
 
 Sources: [Bedrock Converse](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html),
-[Vertex function calling](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/function-calling),
-[Vertex thought signatures](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thought-signatures),
+[Vertex function calling](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/tools/function-calling),
+[Vertex thought signatures](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/thinking/thought-signatures),
 [DataForSEO search volume](https://docs.dataforseo.com/v3/keywords_data-google_ads-search_volume-live/).
