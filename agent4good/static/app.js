@@ -79,7 +79,35 @@ async function render() {
 }
 function newTask(agent = 'strategist') {
   detailId = null;
-  modal('Give your operator a task.',`<form id="task-form"><div class="field"><label for="task-title">What should get done?</label><input id="task-title" name="title" required maxlength="160" placeholder="Research three competitors"></div><div class="field"><label for="task-prompt">Instructions and success criteria</label><textarea id="task-prompt" name="prompt" required rows="5" maxlength="20000" placeholder="Share the context, sources, and what a useful result looks like."></textarea></div><div class="field"><label for="task-agent">Agent</label><select id="task-agent" name="agent">${agentOptions(agent)}</select></div><div class="field"><label for="task-work">Work type</label><select id="task-work" name="work_type"><option value="">Use agent default</option>${['planning','coding','browsing','research','summarization','verification'].map(w => `<option value="${w}">${w[0].toUpperCase()+w.slice(1)}</option>`).join('')}</select><p class="field-help">Uses the model assigned to this work type in Connections.</p></div><p class="small muted">Running uses your configured model and may incur provider charges. External changes still require your approval.</p><div class="actions"><button class="primary" type="submit" name="start" value="true">Start task</button><button class="secondary" type="submit" name="start" value="false">Save draft</button></div></form>`);
+  modal('Give your operator a task.',`<form id="task-form"><div class="field"><label for="task-title">What should get done?</label><input id="task-title" name="title" required maxlength="160" placeholder="Research three competitors"></div><div class="field"><label for="task-prompt">Instructions and success criteria</label><textarea id="task-prompt" name="prompt" required rows="5" maxlength="20000" placeholder="Share the context, sources, and what a useful result looks like."></textarea></div><div class="field"><label for="task-agent">Agent</label><select id="task-agent" name="agent">${agentOptions(agent)}</select></div><p id="task-model-status" class="field-help" role="status" aria-live="polite">Checking model availability…</p><div class="field"><label for="task-work">Work type</label><select id="task-work" name="work_type"><option value="">Use agent default</option>${['planning','coding','browsing','research','summarization','verification'].map(w => `<option value="${w}">${w[0].toUpperCase()+w.slice(1)}</option>`).join('')}</select></div><p class="small muted">Running uses your configured model and may incur provider charges. External changes still require your approval.</p><div class="actions"><button class="primary" type="submit" name="start" value="true" disabled>Start task</button><button class="secondary" type="submit" name="start" value="false">Save draft</button></div></form>`);
+  void updateTaskModelReadiness();
+}
+const roleWork = {product_engineer:'coding',research_analyst:'research',organic_growth_engineer:'research',outreach_engineer:'research',customer_support_engineer:'summarization',product_analyst:'verification'};
+let taskReadinessRequest = 0;
+async function updateTaskModelReadiness() {
+  const form = $('#task-form');
+  if (!form) return;
+  const request = ++taskReadinessRequest;
+  const work = form.work_type.value || roleWork[form.agent.value] || 'planning';
+  const status = $('#task-model-status');
+  const start = form.querySelector('button[name="start"][value="true"]');
+  start.disabled = true;
+  status.textContent = 'Checking model availability…';
+  try {
+    const readiness = await api('readiness');
+    if (request !== taskReadinessRequest || !form.isConnected) return;
+    const route = readiness.model_routes[work];
+    if (route?.available) {
+      status.textContent = `${route.provider} model ready for ${work} work.`;
+      start.disabled = false;
+    } else {
+      status.innerHTML = `The ${escapeHTML(work)} model is unavailable: ${escapeHTML(route?.reason || 'not configured')}. <a href="#integrations">Check Connections</a> or save a draft.`;
+    }
+  } catch (error) {
+    if (request !== taskReadinessRequest || !form.isConnected) return;
+    status.textContent = 'Model status could not be checked. You can still try to start or save a draft.';
+    start.disabled = false;
+  }
 }
 async function taskDetail(id) {
   const t = await api('tasks/' + id); detailId = id;
@@ -117,7 +145,8 @@ async function scheduleDetail(id) {
   const s=await api('schedules/'+id), d=s.definition, c=d?JSON.parse(d.definition):{mode:'interval'};
   modal(escapeHTML(s.name), `<p>${escapeHTML(scheduleLabel({...s,config:c,runs:d?.runs}))}</p><p>${escapeHTML(s.prompt)}</p><h3>Occurrences</h3>${s.occurrences.length?s.occurrences.map(o=>`<div class="schedule-row">${badge(o.status)} ${time(o.created_at)} ${o.task_id?`<button class="text-link" data-task="${o.task_id}">Open task</button>`:''}</div>`).join(''):empty('No occurrences yet.','Work starts when its trigger and dependencies are ready.')}<div class="actions">${d?.cancelled?'':`<button class="danger" data-schedule-cancel="${s.id}">Cancel schedule and unfinished tasks</button>`}</div>`);
 }
-document.addEventListener('change', event => { if(event.target.id==='schedule-mode') scheduleTriggerFields(); });
+document.addEventListener('change', event => { if(event.target.id==='schedule-mode') scheduleTriggerFields(); if(event.target.id==='task-agent'||event.target.id==='task-work') void updateTaskModelReadiness(); });
+document.addEventListener('click', event => { if (event.target.closest('#task-model-status a')) $('#modal').close(); });
 document.addEventListener('click', async event => {
   const el = event.target.closest('button'); if (!el) return;
   try {
