@@ -19,7 +19,7 @@ def command(*args):
 
 def notice(path):
     name = PurePosixPath(path).name.lower()
-    return bool(re.match(r"^(licen[sc]e|copying|copyright|notice|authors)([.\-_]|$)", name))
+    return bool(re.match(r"^(licen[sc]e|copying|copyright|notice|authors|credits)([.\-_]|$)", name))
 
 
 def metadata(raw, path):
@@ -37,7 +37,17 @@ def metadata(raw, path):
 
 def scan(archive, go_reader=None):
     result = {
-        key: [] for key in ("os_packages", "python", "native_files", "notices", "wheels", "browsers", "go")
+        key: []
+        for key in (
+            "os_packages",
+            "python",
+            "native_files",
+            "notices",
+            "wheels",
+            "browsers",
+            "go",
+            "source_files",
+        )
     }
     findings = [
         "Inventory is technical evidence, not legal clearance or proof of complete notices.",
@@ -64,7 +74,13 @@ def scan(archive, go_reader=None):
         is_browser = path.endswith("/playwright/driver/package/browsers.json")
         is_os = path == "var/lib/dpkg/status"
         is_go = path in ("usr/local/bin/minio", "usr/local/bin/mc")
-        if not any((is_native, is_notice, is_meta, is_wheel, is_browser, is_os, is_go)):
+        is_source = path in {
+            f"usr/share/licenses/{kind}/{name}" for kind in ("minio", "mc") for name in ("go.mod", "go.sum")
+        }
+        is_source = is_source or path in {
+            f"usr/share/source/{kind}-corresponding-source.tar.gz" for kind in ("minio", "mc")
+        }
+        if not any((is_native, is_notice, is_meta, is_wheel, is_browser, is_os, is_go, is_source)):
             continue
         digest = hashlib.sha256(prefix)
         # Only metadata and wheel archives need their full bytes in memory.
@@ -78,6 +94,8 @@ def scan(archive, go_reader=None):
             result["native_files"].append(entry)
         if is_notice:
             result["notices"].append(entry)
+        if is_source:
+            result["source_files"].append(entry)
         if is_meta:
             result["python"].append(metadata(bytes(data), path))
         if is_os:
@@ -216,8 +234,18 @@ def main():
             result["findings"].append(
                 "Runtime browser versions unavailable: no recognized version probe path."
             )
-    if args.kind in ("minio", "mc") and not result["go"]:
-        raise ValueError("Storage binary missing")
+    if args.kind in ("minio", "mc"):
+        if not result["go"]:
+            raise ValueError("Storage binary missing")
+        supplied = {row["path"] for row in result["notices"]}
+        prefix = f"usr/share/licenses/{args.kind}/"
+        required_notices = {prefix + name for name in ("LICENSE", "NOTICE", "CREDITS")}
+        if missing := required_notices - supplied:
+            raise ValueError(f"Storage notices missing: {sorted(missing)}")
+        supplied_sources = {row["path"] for row in result["source_files"]}
+        required_sources = {prefix + name for name in ("go.mod", "go.sum")}
+        if missing := required_sources - supplied_sources:
+            raise ValueError(f"Storage source manifests missing: {sorted(missing)}")
     if args.kind in ("application", "browser", "sandbox") and not result["python"]:
         raise ValueError("Python distributions missing")
     if args.kind == "sandbox" and not result["wheels"]:
