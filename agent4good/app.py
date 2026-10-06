@@ -886,6 +886,10 @@ def create_app(settings=None):
     def crewai_alternative():
         return FileResponse(static / "compare" / "crewai.html")
 
+    @app.get("/alternatives/autogen-studio")
+    def autogen_studio_alternative():
+        return FileResponse(static / "compare" / "autogen-studio.html")
+
     legal = Path(__file__).parent / "legal"
 
     @app.get("/terms")
