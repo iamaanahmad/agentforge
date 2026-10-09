@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     secure_cookies: bool = True
     allowed_hosts: list[str] = ["localhost", "127.0.0.1"]
     public_origin: str = "http://localhost:8000"
+    posthog_public_key: str = ""
     openai_api_key: str = Field("", repr=False, exclude=True)
     anthropic_api_key: str = Field("", repr=False, exclude=True)
     bedrock_credentials: str = Field("", repr=False, exclude=True)

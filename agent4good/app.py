@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import BackgroundTasks
 from fastapi.exceptions import RequestValidationError
 from .credentials import CredentialError
 from .webhooks import authenticate_webhook
@@ -31,6 +32,7 @@ from .model_router import ModelRouter
 from .db import Database, now
 from .policy import PolicyDocument, PolicyError
 from .tools import ToolRegistry
+from .analytics import capture, capture_first_result
 
 
 class StrictInput(BaseModel):
@@ -41,6 +43,23 @@ class MissionReview(StrictInput):
     criterion_id: str = Field(min_length=1, max_length=40)
     evidence: str = Field(min_length=1, max_length=4000)
     accepted: bool
+
+
+class PageView(StrictInput):
+    page: Literal[
+        "overview",
+        "tasks",
+        "chats",
+        "missions",
+        "schedules",
+        "agents",
+        "approvals",
+        "memory",
+        "integrations",
+        "settings",
+        "timeline",
+        "activity",
+    ]
 
 
 class Login(StrictInput):
@@ -298,6 +317,12 @@ def create_app(settings=None):
     def session(session=Depends(auth)):
         return {"csrf_token": session["csrf"]}
 
+    @app.post("/api/analytics/pageview", dependencies=[Depends(auth)])
+    def pageview(payload: PageView, background: BackgroundTasks):
+        if settings.posthog_public_key:
+            background.add_task(capture, settings, "owner_pageview", {"page": payload.page})
+        return {"ok": True}
+
     @app.post("/api/logout")
     def logout(response: Response, session=Depends(auth)):
         db.execute("DELETE FROM sessions WHERE token_hash=?", (session["token_hash"],))
@@ -377,10 +402,17 @@ def create_app(settings=None):
             return missions.detail(conn, mission_id)
 
     @app.get("/api/missions/{mission_id}", dependencies=[Depends(auth)])
-    def get_mission(mission_id: str):
+    def get_mission(mission_id: str, background: BackgroundTasks):
         with db.connect() as conn:
             try:
-                return missions.detail(conn, mission_id)
+                result = missions.detail(conn, mission_id)
+                if settings.posthog_public_key and result["status"] == "done":
+                    seen = conn.execute(
+                        "SELECT 1 FROM events WHERE kind='analytics_first_result' LIMIT 1"
+                    ).fetchone()
+                    if not seen:
+                        background.add_task(capture_first_result, db, settings)
+                return result
             except ValueError as exc:
                 raise HTTPException(404, str(exc)) from exc
 
