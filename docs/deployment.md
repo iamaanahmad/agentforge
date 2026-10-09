@@ -8,7 +8,7 @@ For PostgreSQL, multiple workers, and private objects, use [the distributed depl
 ## Local acceptance
 
 Run the commands in the README. Confirm `/healthz` returns 200, sign in, save a draft, and check the worker indicator. Without an OpenAI key, no model run starts. Set provider budgets before adding a key.
-The [self-host guide](self-host-guide.md) walks through the first saved result before deployment.
+The [self-host guide](https://iamaanahmad.github.io/agentforge/) walks through the first saved result before deployment.
 
 ## HTTPS deployment with Docker Compose
 
