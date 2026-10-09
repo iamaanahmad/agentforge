@@ -27,7 +27,7 @@ Project-owned code is available under the [MIT license](https://github.com/iamaa
 Dependencies retain their own licenses. Third-party binary and container redistribution review remains open.
 
 The setup guide covers installation, model credentials, the web app, and the worker.
-Follow the [self-host guide](self-host-guide.md) from a fresh install to a saved result.
+Follow the [self-host guide](https://iamaanahmad.github.io/agentforge/) from a fresh install to a saved result.
 You need Git, Python 3.12 or 3.13, uv, and a model-provider account for AI work.
 Provider charges are separate. You manage hosting, secrets, and backups.
 

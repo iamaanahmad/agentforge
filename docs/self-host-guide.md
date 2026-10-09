@@ -1,7 +1,7 @@
 # Self-host agentforge: install to saved result
 
 This guide takes one owner from a fresh local install to a saved AI result.
-Its mission steps draw on the agentforge 0.2.0 [fresh-install mission report](fresh-mission-acceptance.md).
+Its mission steps draw on the agentforge 0.2.0 [fresh-install mission report](https://github.com/iamaanahmad/agentforge/blob/main/docs/fresh-mission-acceptance.md).
 You run the app and worker on your own machine. This is a local evaluation, not a production deployment.
 
 ## What you need
@@ -27,7 +27,7 @@ Read the password locally. Keep `.env` out of Git and screenshots.
 
 For the default OpenAI route, add your own `A4G_OPENAI_API_KEY` to `.env`.
 Set `A4G_MODEL` to a Responses-compatible model your account can use.
-For Anthropic, Bedrock, or Vertex, follow [model routing](model-routing.md) and [cloud setup](cloud-models-and-skills.md).
+For Anthropic, Bedrock, or Vertex, follow [model routing](https://github.com/iamaanahmad/agentforge/blob/main/docs/model-routing.md) and [cloud setup](https://github.com/iamaanahmad/agentforge/blob/main/docs/cloud-models-and-skills.md).
 Bedrock and Vertex credentials require the encrypted vault and role grants.
 Restart both processes after changing model settings.
 
@@ -70,18 +70,18 @@ Open the resulting artifact and compare it with the source note and criteria.
 Reject unsupported claims. If needed, add an owner-directed correction and run the dependent step.
 Accept each owner-review criterion only after you have inspected the evidence.
 Use **Check completion** to evaluate the mission. Reopen the mission and download the accepted artifact.
-The [mission guide](missions.md) explains criteria, budgets, correction, and recovery controls.
+The [mission guide](https://github.com/iamaanahmad/agentforge/blob/main/docs/missions.md) explains criteria, budgets, correction, and recovery controls.
 
-The [recorded Bedrock run](fresh-mission-acceptance.md) completed this path after the owner rejected its first draft.
+The [recorded Bedrock run](https://github.com/iamaanahmad/agentforge/blob/main/docs/fresh-mission-acceptance.md) completed this path after the owner rejected its first draft.
 Both owner criteria passed after a correction. That single assisted run does not prove unattended quality or repeat reliability.
 
 ## If you deploy on your own host
 
-Use [deployment and recovery](deployment.md) for the one-host SQLite stack, HTTPS, secrets, backups, and health checks.
+Use [deployment and recovery](https://github.com/iamaanahmad/agentforge/blob/main/docs/deployment.md) for the one-host SQLite stack, HTTPS, secrets, backups, and health checks.
 Do not expose the local development port to the internet.
 The documented HTTPS path uses Docker Compose and needs a domain, persistent storage, and fresh production secrets.
 Verify login, worker health, one live artifact, and backup restoration on your host before relying on it.
 No agentforge production host has been verified by this project.
 
-For an exact repeat of the tested Bedrock mission, including its input record and correction, use the [acceptance procedure](fresh-mission-acceptance.md#repeat-the-acceptance-procedure).
+For an exact repeat of the tested Bedrock mission, including its input record and correction, use the [acceptance procedure](https://github.com/iamaanahmad/agentforge/blob/main/docs/fresh-mission-acceptance.md#repeat-the-acceptance-procedure).
 Its model output can differ on a new run.

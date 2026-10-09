@@ -1,0 +1,5 @@
+title: agentforge
+baseurl: /agentforge
+url: https://iamaanahmad.github.io
+exclude:
+  - README.md

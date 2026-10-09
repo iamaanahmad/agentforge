@@ -1,0 +1,9 @@
+---
+layout: default
+title: Self-host agentforge
+description: Install agentforge locally and save your first supervised AI result.
+---
+{% capture guide_markdown %}{% include_relative self-host-guide.md %}{% endcapture %}
+<article class="guide" aria-label="Self-host guide">
+  {{ guide_markdown | remove_first: '# Self-host agentforge: install to saved result' | markdownify }}
+</article>

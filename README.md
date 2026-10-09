@@ -11,7 +11,7 @@
 Give agentforge a task, choose a specialist, and follow its work from request to saved result.
 Keep conversations, plans, approvals, and evidence in one workspace you host.
 
-[Quick start](#run-locally) · [Self-host guide](docs/self-host-guide.md) · [Deployment](#deploy-and-operate) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md) · [Releases](https://github.com/iamaanahmad/agentforge/releases)
+[Quick start](#run-locally) · [Self-host guide](https://iamaanahmad.github.io/agentforge/) · [Deployment](#deploy-and-operate) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md) · [Releases](https://github.com/iamaanahmad/agentforge/releases)
 
 Read the [0.2.0 product update](docs/release-0.2.0.md) for release scope, licensing, and the supervised mission result.
 
@@ -167,7 +167,7 @@ Optional browser and coding brokers require their own setup. Never grant an unre
 
 | Guide | What it covers |
 |---|---|
-| [Self-host guide](docs/self-host-guide.md) | Fresh install, model setup, first result, and supervised mission |
+| [Self-host guide](https://iamaanahmad.github.io/agentforge/) | Fresh install, model setup, first result, and supervised mission |
 | [Architecture](docs/architecture.md) | Processes, storage, extension points |
 | [Task conversations](docs/task-conversations.md) | Separate chats, replies, questions, and follow-ups |
 | [Missions](docs/missions.md) | Objectives, dependent plans, criteria, and evidence |

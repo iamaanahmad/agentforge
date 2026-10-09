@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="{{ page.description | escape }}">
+    <link rel="canonical" href="https://iamaanahmad.github.io/agentforge/">
+    <title>{{ page.title | escape }} · agentforge</title>
+    <link rel="stylesheet" href="{{ '/assets/guide.css' | relative_url }}">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="shell header-inner">
+        <a class="wordmark" href="https://github.com/iamaanahmad/agentforge" aria-label="agentforge repository"><span class="brand-mark" aria-hidden="true"></span>agentforge</a>
+        <a class="header-link" href="https://github.com/iamaanahmad/agentforge/tree/main/docs">Documentation <span aria-hidden="true">↗</span></a>
+      </div>
+    </header>
+    <main>
+      <section class="intro shell">
+        <p class="eyebrow">The self-host guide</p>
+        <h1>Install agentforge.<br><em>Keep the work.</em></h1>
+        <p class="intro-copy">Set up one private workspace, run a supervised task, and check the saved result.</p>
+        <a class="primary-action" href="#what-you-need">Start the guide <span aria-hidden="true">↓</span></a>
+        <p class="scope-note">Local evaluation · One owner · Provider account required</p>
+      </section>
+      <div class="content-shell shell">
+        <nav class="contents" aria-label="On this page">
+          <p>On this page</p>
+          <a href="#what-you-need">What you need</a>
+          <a href="#1-install-and-sign-in">Install and sign in</a>
+          <a href="#2-save-one-bounded-result">Save a result</a>
+          <a href="#3-try-a-supervised-mission">Try a mission</a>
+          <a href="#if-you-deploy-on-your-own-host">Own-host deployment</a>
+        </nav>
+        {{ content }}
+      </div>
+    </main>
+    <footer class="site-footer">
+      <div class="shell footer-inner">
+        <span>agentforge · MIT licensed</span>
+        <a href="https://github.com/iamaanahmad/agentforge">Source on GitHub</a>
+        <a class="tin-credit" href="https://tin.computer"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" fill="#66DC9D"/></svg>Growth by Tin</a>
+      </div>
+    </footer>
+  </body>
+</html>
