@@ -52,6 +52,7 @@
 
 /* Keep the buyer fit visible without competing with the existing headline. */
 .login-message>p.buyer-line{max-width:44ch;color:var(--ink);font-size:15px;font-weight:600;line-height:1.5;margin-bottom:12px}
+.login-message>p.claim-limit{max-width:52ch;color:#4e6556;font-size:11px;line-height:1.5;margin-top:8px}
 @media(max-width:760px){.login-message>p.buyer-line{font-size:13px;margin-bottom:10px}}
 
 /* Keep one bounded, linked proof beside the owner sign-in. */
