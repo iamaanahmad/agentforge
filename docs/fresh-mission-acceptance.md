@@ -1,6 +1,8 @@
 # agentforge 0.2.0 fresh-install mission report
 
 agentforge completed one fresh-install mission with live AWS Bedrock calls after an owner-directed correction. Both criteria passed.
+
+The report's publication passed 25 CI checks. All 18 reviewed public files matched their published bytes. These are publication checks, not repeated mission runs or production tests.
 This proves a supervised mission path, not unattended quality or production readiness.
 
 ## Installation and scope
