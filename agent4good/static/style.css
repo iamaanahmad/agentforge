@@ -49,3 +49,7 @@
 
 /* Instance names wrap without changing navigation width. */
 .brand{white-space:normal;overflow-wrap:anywhere}.brand img{flex-shrink:0;object-fit:contain}
+
+/* Keep the buyer fit visible without competing with the existing headline. */
+.login-message>p.buyer-line{max-width:44ch;color:var(--ink);font-size:15px;font-weight:600;line-height:1.5;margin-bottom:12px}
+@media(max-width:760px){.login-message>p.buyer-line{font-size:13px;margin-bottom:10px}}
