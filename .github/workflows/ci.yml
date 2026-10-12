@@ -54,6 +54,9 @@ jobs:
               f.write('A4G_SESSION_SECRET=' + secrets.token_urlsafe(48) + '\n')
               f.write('A4G_SECURE_COOKIES=false\nA4G_PUBLIC_ORIGIN=http://localhost:8000\n')
           PY
+          A4G_PUBLIC_ORIGIN=https://example.com \
+            A4G_ALLOWED_HOSTS='["example.com","localhost"]' \
+            docker compose -f compose.production.yaml config --quiet
           docker compose up --build -d --wait --wait-timeout 120
           curl --fail http://localhost:8000/healthz
           docker compose exec -T worker python -m agent4good.healthcheck

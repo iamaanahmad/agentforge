@@ -12,12 +12,17 @@ The [self-host guide](self-host-guide.md) walks through the first saved result b
 
 ## HTTPS deployment with Docker Compose
 
+Use `compose.production.yaml` for the single-owner production stack. It runs the
+web process, one worker, and Caddy. Both app processes share the `operator-data`
+volume; Caddy keeps its certificates in `caddy-data`. PostgreSQL and the optional
+MinIO images are not part of this stack.
+
 1. Point your domain's DNS to your host. Allow inbound TCP 80/443 and optionally UDP 443 for Caddy.
 2. Copy `.env.example` to `.env`, set permissions to `600`, and fill fresh strong secrets. Do not use the local bootstrap settings publicly.
 3. Set `A4G_PUBLIC_ORIGIN=https://your-domain`, `A4G_SECURE_COOKIES=true`, and exact `A4G_ALLOWED_HOSTS`, including `localhost` for health checks.
 4. Add your own model key. Add optional service keys only if needed. Use a fine-grained GitHub token for one repository.
-5. Run `docker compose --profile tls up --build -d --wait`.
-6. Check `docker compose ps` and `docker compose exec -T worker python -m agent4good.healthcheck`.
+5. Run `docker compose -f compose.production.yaml up --build -d --wait`.
+6. Check `docker compose -f compose.production.yaml ps`, then run `docker compose -f compose.production.yaml exec -T worker python -m agent4good.healthcheck`.
 7. Visit the HTTPS URL, sign in, and verify a small internal artifact task. Then test one approved disposable GitHub issue if that integration is enabled.
 8. Configure host monitoring, encrypted backups, a provider budget, and your update routine before relying on unattended work.
 
@@ -28,7 +33,7 @@ Caddy terminates TLS. Uvicorn deliberately ignores forwarded client IP headers, 
 Run an online consistent backup inside the deployment:
 
 ```sh
-docker compose exec -T web python scripts/backup.py /app/data/backup-YYYYMMDD.sqlite3
+docker compose -f compose.production.yaml exec -T web python scripts/backup.py /app/data/backup-YYYYMMDD.sqlite3
 ```
 
 Copy the backup to encrypted off-host storage using your host tooling. A file in the same volume is not disaster recovery. It contains private data and session hashes. Verify restore on a separate disposable deployment periodically.
