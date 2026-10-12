@@ -45,6 +45,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t agent4good:ci .
+      - name: Start production image and check health
+        run: |
+          python3 - <<'PY'
+          import secrets
+          with open('/tmp/agentforge-ci.env', 'w') as stream:
+              stream.write('A4G_ADMIN_PASSWORD=' + secrets.token_urlsafe(32) + '\n')
+              stream.write('A4G_SESSION_SECRET=' + secrets.token_urlsafe(48) + '\n')
+              stream.write('A4G_ENVIRONMENT=production\n')
+              stream.write('A4G_SECURE_COOKIES=true\n')
+              stream.write('A4G_PUBLIC_ORIGIN=https://example.com\n')
+              stream.write('A4G_ALLOWED_HOSTS=["example.com","localhost","127.0.0.1"]\n')
+          PY
+          chmod 600 /tmp/agentforge-ci.env
+          trap 'docker logs agentforge-production-ci; docker rm -f agentforge-production-ci; rm -f /tmp/agentforge-ci.env' EXIT
+          docker run -d --name agentforge-production-ci \
+            --env-file /tmp/agentforge-ci.env \
+            --read-only --cap-drop ALL \
+            --tmpfs /tmp:rw,nosuid,size=64m,mode=1777 \
+            --tmpfs /app/data:rw,nosuid,size=64m,mode=1777 \
+            -p 127.0.0.1:18001:8000 agent4good:ci
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18001/healthz | python3 -c 'import json,sys; assert json.load(sys.stdin) == {"status": "ok"}'; then
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' agentforge-production-ci)" != true ]; then
+              exit 1
+            fi
+            sleep 2
+          done
+          exit 1
       - name: Smoke test both processes
         run: |
           python3 - <<'PY'
