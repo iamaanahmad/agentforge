@@ -130,6 +130,7 @@ Step and daily run limits bound work. They are not provider billing limits.
 
 ## Deploy and operate
 
+Use the [deploy runbook](docs/deploy-runbook.md) for secrets, startup, health, and backup checks.
 Read [deployment and recovery](docs/deployment.md) before exposing the app to the internet.
 For Render, use the button above and review the paid service and persistent disk before confirming.
 Enter a strong `A4G_ADMIN_PASSWORD` and your `A4G_OPENAI_API_KEY` during setup; Render generates `A4G_SESSION_SECRET`.
@@ -140,7 +141,7 @@ The Compose stack runs separate non-root web and worker services, with persisten
 
 ```sh
 # First configure your domain, secrets, and production settings in .env.
-docker compose --profile tls up --build -d --wait
+docker compose -f compose.production.yaml up --build -d --wait
 ```
 
 Before using a deployment for real work:
