@@ -1,0 +1,33 @@
+# Paid, persistent single-owner service. Render Free loses SQLite on restart.
+services:
+  - type: web
+    name: agentforge
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python scripts/run_hosted.py
+    plan: 1c-2g
+    healthCheckPath: /healthz
+    autoDeployTrigger: off
+    maxShutdownDelaySeconds: 120
+    disk:
+      name: agentforge-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: A4G_DATA_DIR
+        value: /app/data
+      - key: A4G_ENVIRONMENT
+        value: production
+      - key: A4G_SECURE_COOKIES
+        value: "true"
+      - key: A4G_PUBLIC_ORIGIN
+        fromService:
+          type: web
+          name: agentforge
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: A4G_ADMIN_PASSWORD
+        sync: false
+      - key: A4G_SESSION_SECRET
+        generateValue: true
+      - key: A4G_OPENAI_API_KEY
+        sync: false

@@ -28,6 +28,66 @@ MinIO images are not part of this stack.
 
 Caddy terminates TLS. Uvicorn deliberately ignores forwarded client IP headers, so login throttling is shared per proxy IP. This is conservative for one owner. Do not enable arbitrary forwarded-header trust to bypass it. Restrict origin ports and deploy behind an access gateway if your risk profile requires it.
 
+## Managed host paths: Render and Fly
+
+The repository also includes `render.yaml` and `fly.toml`. Each runs the web
+process and one SQLite worker on **one machine with one persistent volume**.
+Their managed HTTPS endpoints replace Caddy. Neither config creates a PostgreSQL
+service or uses the optional MinIO images. The host must stay running for
+scheduled work, so do not enable idle suspension or scale above one machine.
+
+**These are paid paths, not free production tiers.** Render Free web services
+lose SQLite data on restart and do not allow a persistent disk. The Render
+Blueprint selects a 2 GB paid web service and a 1 GB disk. Render listed the
+service at $25/month and persistent disks at $0.25/GB-month in October 2026.
+Fly bills running machines and volumes separately. Its October 2026 price
+update lists $0.15/GB-month for volumes. Model provider calls can also incur
+charges. Check current host prices before creating either service.
+
+### Render
+
+1. Review the cost and import this repository as a Render Blueprint. The
+   `render.yaml` file creates one paid web service with a persistent disk.
+   Automatic deploys are off. Creating the Blueprint starts billable service.
+2. During the initial Blueprint setup, supply `A4G_ADMIN_PASSWORD` (at least
+   16 characters) and `A4G_OPENAI_API_KEY` from your own account. Render
+   generates `A4G_SESSION_SECRET`. Set `A4G_MODEL` and model budgets if you
+   need values other than the defaults. Set optional adapter keys only for
+   adapters you will use.
+3. Render supplies the HTTPS origin to `A4G_PUBLIC_ORIGIN`. For a custom
+   domain, set that variable to its exact HTTPS origin. The hosted launcher
+   derives `A4G_ALLOWED_HOSTS` from the origin. Do not add a wildcard.
+4. After deploy, check `/healthz`, sign in, and check the worker indicator.
+   Then run the saved-result and backup checks below.
+
+### Fly
+
+1. Review Fly's current charges. Replace the placeholder `app` in `fly.toml`
+   with your unique Fly app name. Create the app without deploying it yet.
+2. Create one `agentforge_data` volume in the configured `iad` region. The
+   `fly.toml` mount places it at `/app/data`. A volume is billable even when
+   its machine stops. Keep exactly one app machine with this SQLite volume.
+3. Set `A4G_ADMIN_PASSWORD` (at least 16 characters),
+   `A4G_SESSION_SECRET` (at least 32 characters), and
+   `A4G_OPENAI_API_KEY` as Fly secrets. Do not commit their values. Add
+   `A4G_PUBLIC_ORIGIN` only for a custom HTTPS domain; otherwise the launcher
+   uses `https://<app>.fly.dev`. Set optional keys and model budgets as needed.
+4. Deploy only after checking the cost. Check `/healthz`, sign in, and check
+   the worker indicator. Then run the saved-result and backup checks below.
+
+Both hosts use the same `scripts/run_hosted.py` launcher. It stops both
+processes if either exits. Their HTTP health checks only prove web and SQLite
+readiness; inspect the worker indicator for worker health. Use an encrypted
+off-host backup. A provider disk snapshot alone is not a verified SQLite
+backup. Hosted startup and paid-provider behavior remain untested until an
+owner creates a service.
+
+Host terms checked October 12, 2026:
+[Render Free limits](https://render.com/docs/free),
+[Render disk limits](https://render.com/docs/disks),
+[Render pricing](https://render.com/pricing), and
+[Fly October 2026 pricing](https://fly.io/pricing-update/).
+
 ## Backups
 
 Run an online consistent backup inside the deployment:

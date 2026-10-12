@@ -1,0 +1,41 @@
+# Paid, persistent single-owner service. Set app name before launch.
+app = "replace-with-your-agentforge-app"
+primary_region = "iad"
+kill_signal = "SIGTERM"
+kill_timeout = "120s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[processes]
+  app = "python scripts/run_hosted.py"
+
+[env]
+  A4G_DATA_DIR = "/app/data"
+  A4G_ENVIRONMENT = "production"
+  A4G_SECURE_COOKIES = "true"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/healthz"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+
+[[mounts]]
+  source = "agentforge_data"
+  destination = "/app/data"
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+  processes = ["app"]
