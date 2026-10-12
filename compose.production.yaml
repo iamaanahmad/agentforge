@@ -1,0 +1,77 @@
+# One owner on one Linux host. Caddy supplies HTTPS; SQLite stays on one volume.
+# Copy .env.example to .env and set the private values before starting.
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: agentforge:production
+  env_file:
+    - .env
+  environment:
+    A4G_DATA_DIR: /app/data
+    A4G_ENVIRONMENT: production
+    A4G_SECURE_COOKIES: "true"
+    A4G_PUBLIC_ORIGIN: ${A4G_PUBLIC_ORIGIN:?Set the HTTPS origin in .env}
+    A4G_ALLOWED_HOSTS: ${A4G_ALLOWED_HOSTS:?Set the public host and localhost in .env}
+  volumes:
+    - operator-data:/app/data
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  mem_limit: 512m
+  cpus: 1.0
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  web:
+    <<: *app
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  worker:
+    <<: *app
+    command: [python, -m, agent4good.worker]
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -m, agent4good.healthcheck]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    stop_grace_period: 120s
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      A4G_PUBLIC_ORIGIN: ${A4G_PUBLIC_ORIGIN:?Set the HTTPS origin in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  operator-data:
+  caddy-data:
+  caddy-config:
