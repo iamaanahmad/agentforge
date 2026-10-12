@@ -13,6 +13,10 @@ Keep conversations, plans, approvals, and evidence in one workspace you host.
 
 [Quick start](#run-locally) · [Self-host guide](docs/self-host-guide.md) · [Deployment](#deploy-and-operate) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md) · [Releases](https://github.com/iamaanahmad/agentforge/releases)
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/iamaanahmad/agentforge)
+
+This button opens a paid Render setup with persistent storage. Review the cost and add your own secrets before deploying.
+
 Read the [0.2.0 product update](docs/release-0.2.0.md) for release scope, licensing, and the supervised mission result.
 
 ## What you can do
@@ -127,6 +131,11 @@ Step and daily run limits bound work. They are not provider billing limits.
 ## Deploy and operate
 
 Read [deployment and recovery](docs/deployment.md) before exposing the app to the internet.
+For Render, use the button above and review the paid service and persistent disk before confirming.
+Enter a strong `A4G_ADMIN_PASSWORD` and your `A4G_OPENAI_API_KEY` during setup; Render generates `A4G_SESSION_SECRET`.
+After deployment, open your HTTPS address, check `/healthz`, sign in, and confirm the worker is online.
+Back up the persistent data off-host before relying on unattended work. See the [Render and Fly steps](docs/deployment.md#managed-host-paths-render-and-fly).
+
 The Compose stack runs separate non-root web and worker services, with persistent storage and optional Caddy HTTPS.
 
 ```sh
