@@ -22,6 +22,15 @@ def test_private_routes_require_login(client):
     assert client.get("/").status_code == 200
 
 
+def test_flowise_page_has_search_head_and_incoming_link(client):
+    page = client.get("/alternatives/flowise")
+    assert page.status_code == 200
+    assert "Flowise alternative" in page.text
+    assert '<link rel="canonical" href="http://testserver/alternatives/flowise"' in page.text
+    assert '<meta name="description"' in page.text
+    assert 'href="/alternatives/flowise"' in client.get("/alternatives/crewai").text
+
+
 def test_origin_csrf_and_logout(owner):
     payload = {"title": "Research", "prompt": "Use supplied evidence"}
     assert (
