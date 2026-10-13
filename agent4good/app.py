@@ -891,8 +891,10 @@ def create_app(settings=None):
         return FileResponse(static / "compare" / "autogen-studio.html")
 
     @app.get("/alternatives/flowise")
-    def flowise_alternative():
-        return FileResponse(static / "compare" / "flowise.html")
+    def flowise_alternative(request: Request):
+        html = (static / "compare" / "flowise.html").read_text()
+        canonical = str(request.url_for("flowise_alternative"))
+        return HTMLResponse(html.replace('href="/alternatives/flowise"', f'href="{canonical}"', 1))
 
     legal = Path(__file__).parent / "legal"
 
