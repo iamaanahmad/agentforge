@@ -890,6 +890,10 @@ def create_app(settings=None):
     def autogen_studio_alternative():
         return FileResponse(static / "compare" / "autogen-studio.html")
 
+    @app.get("/alternatives/flowise")
+    def flowise_alternative():
+        return FileResponse(static / "compare" / "flowise.html")
+
     legal = Path(__file__).parent / "legal"
 
     @app.get("/terms")
