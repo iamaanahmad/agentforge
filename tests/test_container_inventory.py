@@ -45,6 +45,9 @@ def test_inventory_preserves_versions_hashes_links_and_wheel_notices():
         "usr/lib/libfoo.so.3": native,
         "usr/share/doc/foo/copyright": b"notice",
         "usr/local/bin/minio": b"\x7fELFgo",
+        "usr/share/licenses/minio/CREDITS": b"upstream credits",
+        "usr/share/licenses/minio/go.mod": b"module github.com/minio/minio\n",
+        "usr/share/licenses/minio/go.sum": b"module hashes",
         "usr/lib/playwright/driver/package/browsers.json": b'{"browsers": [{"name": "chromium", "revision": "1"}]}',
     }
     with image(files, {"usr/lib/libfoo.so": "libfoo.so.3"}) as archive:
@@ -60,6 +63,8 @@ def test_inventory_preserves_versions_hashes_links_and_wheel_notices():
     assert len(result["wheels"][0]["notices"]) == 1
     assert len(result["wheels"][0]["native_files"]) == 1
     assert result["go"][0]["build_info"] == "embedded module evidence"
+    assert any(row["path"] == "usr/share/licenses/minio/CREDITS" for row in result["notices"])
+    assert len(result["source_files"]) == 2
     assert result["browsers"][0]["manifest"]["browsers"][0]["revision"] == "1"
 
 

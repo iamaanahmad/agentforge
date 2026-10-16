@@ -5,13 +5,17 @@ on:
     paths:
       - '.github/workflows/container-inventory.yml'
       - 'scripts/container_inventory.py'
+      - 'scripts/audit_go_sources.py'
+      - 'deploy/object-storage/minio.Dockerfile'
+      - 'deploy/object-storage/mc.Dockerfile'
       - 'tests/test_container_inventory.py'
+      - 'deploy/object-storage/README.md'
 permissions:
   contents: read
 jobs:
   inventory:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
@@ -45,6 +49,17 @@ jobs:
           python3 scripts/container_inventory.py agentforge-inventory:ci \
             --kind "$KIND" --commit "$(git rev-parse HEAD)" --output evidence
           cat evidence/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Match linked Go modules to packaged source
+        if: matrix.kind == 'minio' || matrix.kind == 'mc'
+        env:
+          KIND: ${{ matrix.kind }}
+        run: |
+          container=$(docker create --network none agentforge-inventory:ci)
+          trap 'docker rm -f "$container" >/dev/null' EXIT
+          docker cp "$container:/usr/share/source/$KIND-corresponding-source.tar.gz" evidence/corresponding-source.tar.gz
+          python3 scripts/audit_go_sources.py evidence/inventory.json evidence/corresponding-source.tar.gz \
+            --output evidence/go-source-map.json
+          python3 -c 'import json; d=json.load(open("evidence/go-source-map.json")); print("Mapped modules:",len(d["modules"])); print("Missing root notices:",len(d["missing_root_notices"]))' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: container-inventory-${{ matrix.kind }}-${{ github.sha }}
