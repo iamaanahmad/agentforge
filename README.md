@@ -26,14 +26,14 @@ Read the [0.2.0 product update](docs/release-0.2.0.md) for release scope, licens
 
 ## What you can do
 
-- **Keep each task in its own conversation.** Send follow-ups, answer questions, and retrieve previous replies and results.
-- **Turn objectives into missions.** Define success criteria and limits, then review dependent tasks and their evidence.
-- **Work with nine specialists.** Use strategy, research, engineering, analytics, SEO, support, outreach, ads, and finance roles.
-- **Inspect execution.** Follow plans, child workers, approvals, retries, usage, and saved artifacts in the timeline.
-- **Control external actions.** Review exact write requests before execution. Scope permissions and bound task work.
-- **Resume durable work.** Saved checkpoints and receipts support recovery. Uncertain writes stop for inspection.
-- **Choose your models.** Configure OpenAI, Anthropic, AWS Bedrock, or Google Vertex AI across six task routes.
-- **Customize your installation.** Set a name, tagline, logo, and accent color without changing package names or stored data.
+- **Run tasks in separate chats.** Ask follow-up questions and return to saved replies and results.
+- **Plan a mission.** Set goals, limits, and success checks before reviewing its tasks and results.
+- **Assign specialist work.** Choose from nine roles for research, strategy, engineering, growth, support, analytics, and finance.
+- **Approve outside changes.** Review the exact request before a connected tool writes to another service.
+- **See what happened.** Open the activity history to check actions, approvals, retries, model use, and saved files.
+- **Return to work after a restart.** Reopen saved tasks and results. The system holds uncertain changes for review.
+- **Connect your AI account.** Choose OpenAI, Anthropic, AWS Bedrock, or Google Vertex AI for each task route.
+- **Set your own look.** Change the installation's name, tagline, logo, and accent color.
 
 agentforge supports one owner per installation. SQLite runs on one host.
 An optional PostgreSQL stack separates control services from worker replicas.
