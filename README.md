@@ -37,7 +37,11 @@ Read the [0.2.0 product update](docs/release-0.2.0.md) for release scope, licens
 
 agentforge supports one owner per installation. SQLite runs on one host.
 An optional PostgreSQL stack separates control services from worker replicas.
-This is an early release with automated integration checks, not a claim of verified production operation.
+
+**What has been checked:** An owner signed in and used the app on a local host.
+Automated tests cover key features, often with simulated external services.
+The fresh-install report above records one assisted Bedrock mission with an owner-directed correction.
+No production host has been verified, and repeat unattended mission quality has not been measured.
 
 Previously Agent4Good: Python imports remain `agent4good`, the CLI remains `a4g`, and settings retain the `A4G_` prefix.
 
