@@ -6,10 +6,11 @@
 [![Python](https://img.shields.io/badge/Python-3.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Latest release](https://img.shields.io/github/v/release/iamaanahmad/agentforge)](https://github.com/iamaanahmad/agentforge/releases/latest)
 
-**A self-hosted AI operator with saved work and human control.**
+**A self-hosted AI operator for technical founders and operators.**
 
-Give agentforge a task, choose a specialist, and follow its work from request to saved result.
-Keep conversations, plans, approvals, and evidence in one workspace you host.
+Agentforge is designed for people who can run their own host and connect an AI provider account.
+If your AI work is spread across chats, keep requests, decisions, results, and shared context in one saved workspace.
+Give it a task, choose a specialist, review its actions, and return to the result later.
 
 [Quick start](#run-locally) · [Self-host guide](docs/self-host-guide.md) · [Deployment](#deploy-and-operate) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md) · [Releases](https://github.com/iamaanahmad/agentforge/releases)
 
