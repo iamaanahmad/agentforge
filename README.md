@@ -12,6 +12,10 @@ Agentforge is designed for people who can run their own host and connect an AI p
 If your AI work is spread across chats, keep requests, decisions, results, and shared context in one saved workspace.
 Give it a task, choose a specialist, review its actions, and return to the result later.
 
+The [fresh-install mission report](docs/fresh-mission-acceptance.md) shows one supervised Bedrock mission.
+An owner rejected the first draft, directed a correction, and retrieved the saved result after restart.
+Unattended and production use remain unverified.
+
 [Quick start](#run-locally) · [Self-host guide](docs/self-host-guide.md) · [Deployment](#deploy-and-operate) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md) · [Releases](https://github.com/iamaanahmad/agentforge/releases)
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/iamaanahmad/agentforge)
@@ -90,7 +94,6 @@ Keep both processes running. Restart both after changing server configuration.
 You can save drafts and memory without model credentials. AI execution requires a valid selected provider.
 There is no application mode that reports fake model success.
 See [clean-install evidence](docs/install-verification.md) for tested steps and remaining limits.
-The [agentforge fresh-install mission report](docs/fresh-mission-acceptance.md) records one supervised Bedrock mission, including a rejected draft and correction.
 
 ## Complete your first task
 
