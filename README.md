@@ -186,6 +186,8 @@ Optional browser and coding brokers require their own setup. Never grant an unre
 | Guide | What it covers |
 |---|---|
 | [Self-host guide](docs/self-host-guide.md) | Fresh install, model setup, first result, and supervised mission |
+| [Self-hosted AI agents](docs/self-hosted-ai-agents.md) | Hosting tradeoffs, safety checks, and a first evaluation |
+| [Agent orchestration frameworks](docs/agent-orchestration-frameworks.md) | Worker coordination, owner controls, and framework fit |
 | [Architecture](docs/architecture.md) | Processes, storage, extension points |
 | [Task conversations](docs/task-conversations.md) | Separate chats, replies, questions, and follow-ups |
 | [Missions](docs/missions.md) | Objectives, dependent plans, criteria, and evidence |
