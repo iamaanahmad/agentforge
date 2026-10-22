@@ -1,0 +1,15 @@
+# agentforge
+
+> Agentforge is a self-hosted AI operator for technical founders and operators who can manage a host and connect an AI provider account.
+
+Agentforge keeps tasks, decisions, results, and shared context in one saved, single-owner workspace. An owner can create tasks, plan missions, assign nine specialist roles, review exact external writes, inspect activity, and reopen saved results. It supports OpenAI, Anthropic, AWS Bedrock, and Google Vertex AI routes. The public code is MIT licensed. A model-provider account is needed for AI execution, and provider or hosting charges may apply. No verified product price or subscription is published.
+
+One fresh-install, owner-supervised mission used live Bedrock calls. The owner rejected an unsupported first draft, directed a correction, and retrieved the accepted result after a restart. This is evidence for that bounded path. It does not establish repeat unattended quality or production reliability. No public production host has been verified.
+
+## Start and verify
+
+- [README and local quick start](https://github.com/iamaanahmad/agentforge/blob/main/README.md): Product scope, supported actions, requirements, and local setup.
+- [Self-host guide](https://github.com/iamaanahmad/agentforge/blob/main/docs/self-host-guide.md): First saved result on an owner-managed installation.
+- [Deployment guide](https://github.com/iamaanahmad/agentforge/blob/main/docs/deployment.md): Single-host setup, persistent storage, and checks before relying on a deployment.
+- [Fresh-install mission report](https://github.com/iamaanahmad/agentforge/blob/main/docs/fresh-mission-acceptance.md): The supervised mission, failed first draft, correction, saved artifacts, and limits.
+- [0.2.0 release](https://github.com/iamaanahmad/agentforge/releases/tag/v0.2.0): Public release and source archive.
