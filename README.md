@@ -16,13 +16,33 @@ The [fresh-install mission report](docs/fresh-mission-acceptance.md) shows one s
 An owner rejected the first draft, directed a correction, and retrieved the saved result after restart.
 Unattended and production use remain unverified.
 
-[Quick start](#run-locally) · [Self-host guide](docs/self-host-guide.md) · [Deployment](#deploy-and-operate) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md) · [Releases](https://github.com/iamaanahmad/agentforge/releases)
+[Common questions](#common-questions) · [Quick start](#run-locally) · [Self-host guide](docs/self-host-guide.md) · [Deployment](#deploy-and-operate) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md) · [Releases](https://github.com/iamaanahmad/agentforge/releases)
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/iamaanahmad/agentforge)
 
 This button opens a paid Render setup with persistent storage. Review the cost and add your own secrets before deploying.
 
 Read the [0.2.0 product update](docs/release-0.2.0.md) for release scope, licensing, and the supervised mission result.
+
+## Common questions
+
+### What is agentforge?
+
+Agentforge is a self-hosted AI operator for one owner. It keeps tasks, approvals, results, and shared context in a saved workspace.
+
+### Who is it for?
+
+It is designed for technical founders and operators who can manage their own host and connect an AI provider account. Buyer fit has not been validated.
+
+### What does it cost?
+
+Project-owned code is [MIT licensed](LICENSE). No public price or subscription terms have been verified for agentforge. Hosting and AI provider charges are separate.
+
+### Why trust it?
+
+The [fresh-install mission report](docs/fresh-mission-acceptance.md) records one supervised Bedrock mission and an owner-directed correction.
+The saved result was retrieved after restart. Automated checks cover more features, often with simulated services.
+Production use and repeat unattended mission quality remain unverified.
 
 ## What you can do
 
